@@ -12,15 +12,17 @@
 
 ```
 
+```text
 ZetaSave/
 ├── backend/
 │   ├── app/
-│   │   └── main.py           \# FastAPI 后端：创建计划 + 合约读接口
+│   │   └── main.py           # FastAPI 后端：创建计划 + 合约读接口
 │   ├── ai_module/
-│   │   └── agent.py          \# DeepSeek 调用：生成储蓄 JSON 并写入后端
-│   ├── run_server.py         \# 一键启动 FastAPI 的入口
-│   └── requirements.txt      \# 后端与 AI 依赖
-└── README.md                 \# 仓库总说明，可在其中链接本文件
+│   │   └── agent.py          # DeepSeek 调用：生成储蓄 JSON 并写入后端
+│   ├── run_server.py         # 一键启动 FastAPI 的入口
+│   └── requirements.txt      # 后端与 AI 依赖
+└── README.md                 # 仓库总说明，可在其中链接本文件
+
 
 ---
 
