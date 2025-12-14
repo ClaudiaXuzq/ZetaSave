@@ -18,7 +18,7 @@ const initialMessages: Message[] = [
     id: "1",
     role: "assistant",
     content:
-      "Welcome to ZetaSave! 🎄 I'm your AI savings assistant. I can help you optimize your cross-chain savings strategy, track rewards, and answer questions about your goals.",
+      "Welcome to ZetaSave! 🎄 I'm your AI savings assistant. You can ask me to make deposits, withdraw funds, track rewards, or get personalized savings advice. Just tell me what you'd like to do!",
     timestamp: new Date(Date.now() - 300000),
   },
   {
@@ -66,7 +66,7 @@ export function AiChatPanel() {
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content:
-          "Great question! Let me analyze your savings data and get back to you with personalized recommendations. 🎅",
+          "I can help you with that! For deposits and withdrawals, please connect with our backend API. Meanwhile, I can provide you with savings insights and track your progress. 📊",
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, aiMessage])
@@ -123,7 +123,7 @@ export function AiChatPanel() {
       <div className="p-4 border-t border-border/50 bg-card">
         <div className="flex gap-2">
           <Input
-            placeholder="Ask about your savings..."
+            placeholder="Ask me to deposit, withdraw, or about your savings..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}

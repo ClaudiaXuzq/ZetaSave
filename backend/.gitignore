@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# Env
+.env
+.venv/
+
+# Tooling
+.claude/
+
+# Node
+node_modules/
+
+# OS
+.DS_Store

@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pydantic
+requests
+openai
+python-dotenv
+web3>=6.10.0
