@@ -74,7 +74,7 @@ export function AiChatPanel() {
   }
 
   return (
-    <Card className="h-[calc(100vh-90px)] flex flex-col shadow-sm border-border/50 rounded-2xl overflow-hidden">
+    <Card className="h-[calc(100vh-40px)] flex flex-col shadow-sm border-border/50 rounded-2xl overflow-hidden">
       {/* Header */}
       <div className="px-5 py-4 border-b border-border/50 bg-card">
         <div className="flex items-center gap-3">
