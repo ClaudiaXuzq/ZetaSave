@@ -1,5 +1,6 @@
 import { AiChatPanel } from "@/components/ai-chat-panel"
 import { SavingsDashboard } from "@/components/savings-dashboard"
+import { ConnectButton } from "@rainbow-me/rainbowkit"
 
 export function DashboardLayout() {
   return (
@@ -15,9 +16,7 @@ export function DashboardLayout() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="px-3 py-1.5 rounded-full bg-secondary text-secondary-foreground text-sm font-medium">
-              0x1234...5678
-            </div>
+            <ConnectButton />
           </div>
         </div>
       </header>

@@ -1,15 +1,16 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
-import { Wallet, Gift, Check } from "lucide-react"
+import { Gift } from "lucide-react"
+import { ConnectButton } from "@rainbow-me/rainbowkit"
+import { useAccount } from "wagmi"
 
 interface WalletConnectCardProps {
-  isConnected: boolean
-  onConnect: () => void
-  onDisconnect: () => void
   onContinue?: () => void
 }
 
-export function WalletConnectCard({ isConnected, onConnect, onDisconnect, onContinue }: WalletConnectCardProps) {
+export function WalletConnectCard({ onContinue }: WalletConnectCardProps) {
+  const { isConnected, address } = useAccount()
+
   return (
     <Card className="w-full max-w-md shadow-lg border-border/50 rounded-2xl overflow-hidden">
       <CardHeader className="text-center pb-2 pt-8">
@@ -17,32 +18,22 @@ export function WalletConnectCard({ isConnected, onConnect, onDisconnect, onCont
           <Gift className="w-8 h-8 text-primary" />
         </div>
         <h2 className="text-xl font-semibold text-foreground text-balance leading-relaxed">
-          Connect Your Wallet to Start Your Christmas Savings Journey
+          Connect Your Wallet to Start Your Savings Journey
         </h2>
       </CardHeader>
 
       <CardContent className="px-6 py-6">
         <div className="space-y-4">
-          {/* RainbowKit ConnectButton Placeholder */}
-          <Button
-            onClick={isConnected ? onDisconnect : onConnect}
-            variant={isConnected ? "outline" : "default"}
-            className="w-full h-12 rounded-xl gap-2 font-medium"
-          >
-            {isConnected ? (
-              <>
-                <Check className="w-4 h-4" />
-                Wallet Connected
-              </>
-            ) : (
-              <>
-                <Wallet className="w-4 h-4" />
-                Connect MetaMask via RainbowKit
-              </>
-            )}
-          </Button>
+          {/* RainbowKit ConnectButton */}
+          <div className="flex justify-center">
+            <ConnectButton />
+          </div>
 
-          {isConnected && <p className="text-center text-sm text-muted-foreground">🎅 Connected: 0x1234...5678</p>}
+          {isConnected && address && (
+            <p className="text-center text-sm text-muted-foreground">
+              Connected: {address.slice(0, 6)}...{address.slice(-4)}
+            </p>
+          )}
         </div>
       </CardContent>
 
