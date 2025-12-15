@@ -1,10 +1,10 @@
 # main.py
-# 安装依赖: pip install fastapi uvicorn pydantic
+# 安装依赖: pip install fastapi uvicorn pydantic web3
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict, Any  # <--- 修改了这里，增加了 List, Dict, Any
 from contextlib import asynccontextmanager
 import datetime
 
@@ -59,7 +59,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 1. 定义数据模型 (严格遵守刚才群里确认的 JSON) ---
+# --- 1. 定义数据模型 ---
 class SavingPlan(BaseModel):
     # plan_id 后端生成，所以这里可以不传，或者由AI传
     user_wallet_address: str
@@ -121,17 +121,6 @@ async def get_contract_data(user_address: str):
 async def get_user_nfts(address: str):
     """
     获取用户的 NFT 列表及元数据
-
-    Args:
-        address: 用户的以太坊地址
-
-    Returns:
-        UserNFTsResponse: 包含 NFT 列表和元数据的响应
-
-    Raises:
-        HTTPException: 400 - 地址格式无效
-        HTTPException: 500 - RPC 连接失败或合约调用失败
-        HTTPException: 503 - Web3 服务未初始化
     """
     # 检查 Web3 服务是否初始化
     if web3_service is None:
@@ -152,7 +141,6 @@ async def get_user_nfts(address: str):
                 nfts_metadata.append(NFTMetadata(**metadata))
             except Exception as e:
                 print(f"⚠️ 获取 NFT {nft_id} 元数据失败: {e}")
-                # 继续处理其他 NFT
                 continue
 
         # 3. 返回响应
@@ -175,28 +163,13 @@ async def get_user_nfts(address: str):
 async def get_plan_progress(address: str, plan_id: int):
     """
     获取用户储蓄计划的进度
-
-    Args:
-        address: 用户的以太坊地址
-        plan_id: 计划 ID（链上 ID）
-
-    Returns:
-        UserPlanResponse: 计划详细信息
-
-    Raises:
-        HTTPException: 400 - 地址格式无效或 plan_id 无效
-        HTTPException: 404 - 计划不存在
-        HTTPException: 500 - RPC 连接失败或合约调用失败
-        HTTPException: 503 - Web3 服务未初始化
     """
-    # 检查 Web3 服务是否初始化
     if web3_service is None:
         raise HTTPException(
             status_code=503,
             detail="Web3 服务未初始化"
         )
 
-    # 验证 plan_id
     if plan_id < 0:
         raise HTTPException(
             status_code=400,
@@ -204,10 +177,7 @@ async def get_plan_progress(address: str, plan_id: int):
         )
 
     try:
-        # 调用 Web3 服务获取计划
         plan_data = web3_service.get_user_plan(address, plan_id)
-
-        # 返回响应
         return UserPlanResponse(**plan_data)
 
     except InvalidAddressError as e:
@@ -220,5 +190,46 @@ async def get_plan_progress(address: str, plan_id: int):
         raise HTTPException(status_code=500, detail=f"合约调用失败: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"服务器内部错误: {e}")
+
+# --- 4. 新增：AI 多轮对话接口 ---
+
+class ChatMessage(BaseModel):
+    role: str      # 'user' 或 'assistant'
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str                  # 用户最新发的消息
+    history: List[ChatMessage]    # 之前的聊天记录
+    wallet_address: Optional[str] = "0xUnknown"
+
+@app.post("/api/ai/chat")
+async def chat_endpoint(req: ChatRequest):
+    """
+    前端调用此接口进行多轮对话。
+    """
+    # 动态导入 agent 避免循环引用或初始化问题
+    from ai_module.agent import chat_with_ai
+    
+    # 转换 Pydantic 对象为 dict 列表给 agent 用
+    history_dicts = [{"role": h.role, "content": h.content} for h in req.history]
+    
+    print(f"🤖 收到 AI 请求: {req.message}")
+
+    # 调用 AI 核心逻辑
+    ai_response = chat_with_ai(req.message, history_dicts)
+    
+    # 构造返回给前端的数据
+    response_data = {
+        "status": "success",
+        "type": ai_response.get("type", "question"),
+        "message": ai_response.get("content"),
+        "plan_data": ai_response.get("data", None)
+    }
+    
+    # 如果 AI 已经生成了 plan，我们顺便在后端打印一下日志
+    if response_data["type"] == "plan" and response_data["plan_data"]:
+        print(f"✅ AI 完成了计划生成: {response_data['plan_data']}")
+        
+    return response_data
 
 # 启动命令: uvicorn main:app --reload
