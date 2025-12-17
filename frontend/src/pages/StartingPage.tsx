@@ -16,18 +16,38 @@ export default function StartingPage() {
   const [notes, setNotes] = useState("")
 
   const handleStartSaving = () => {
-    console.log("Starting savings plan:", {
+    // 1. 简单的表单校验
+    if (!targetAmount || !purpose || !goalDate) {
+      alert("Please fill in Target Amount, Goal Date, and Purpose!");
+      return;
+    }
+
+    console.log("Starting savings plan with context:", {
       targetAmount,
       goalDate,
       purpose,
       notes,
     })
-    navigate("/dashboard")
+
+    // 2. 携带数据跳转到 Dashboard (或含有 AI Chat 的页面)
+    // 这里的 state 会被目标页面的 useLocation() 获取到
+    navigate("/dashboard", { 
+      state: { 
+        initialContext: {
+          targetAmount,
+          goalDate,
+          purpose,
+          notes
+        }
+      } 
+    })
   }
 
   const handleConnectWallet = () => {
+    // 这里的逻辑也可以优化，但暂时保持原样或只是简单的跳转
     console.log("Connecting wallet...")
-    navigate("/wallet")
+    // 如果你有专门的连接钱包逻辑，可以在这里调用，或者单纯跳到 dashboard
+    navigate("/dashboard") 
   }
 
   return (
@@ -116,6 +136,7 @@ export default function StartingPage() {
                   <SelectItem value="christmas-travel">Christmas Travel</SelectItem>
                   <SelectItem value="shopping">Shopping</SelectItem>
                   <SelectItem value="loan-repayment">Loan Repayment</SelectItem>
+                  <SelectItem value="others">Others</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -136,7 +157,7 @@ export default function StartingPage() {
                 Start Saving Plan
               </Button>
               <Button onClick={handleConnectWallet} variant="outline" className="flex-1 text-base h-11" size="lg">
-                Connect MetaMsk Wallet
+                Connect MetaMask Wallet
               </Button>
             </div>
           </CardContent>
@@ -152,4 +173,3 @@ export default function StartingPage() {
     </div>
   )
 }
-

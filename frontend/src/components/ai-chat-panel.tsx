@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { useLocation } from "react-router-dom" // 引入路由钩子
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -41,6 +42,10 @@ export function AiChatPanel() {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  
+  // 🆕 新增：处理路由传参
+  const location = useLocation()
+  const hasInitialized = useRef(false)
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -48,20 +53,48 @@ export function AiChatPanel() {
     }
   }, [messages, isLoading])
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return
-    const userText = input.trim()
-    setInput("")
+  // 🆕 新增：自动处理从首页传来的表单数据
+  useEffect(() => {
+    // 检查是否有 initialContext，并且确保只执行一次 (hasInitialized)
+    if (location.state?.initialContext && !hasInitialized.current) {
+      hasInitialized.current = true;
+      const { targetAmount, goalDate, purpose, notes } = location.state.initialContext;
+      
+      console.log("🚀 Received context from form:", location.state.initialContext);
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: userText,
-      timestamp: new Date(),
-      type: "text",
+      // 构造一个详细的 Prompt 给 AI
+      // 这里我们把 notes 也加上，让 AI 知道更多细节
+      const prompt = `I want to create a savings plan. 
+      Goal Purpose: ${purpose}. 
+      Target Amount: ${targetAmount}. 
+      Deadline: ${goalDate}. 
+      Additional Notes: ${notes}.
+      Please create a savings plan based on this.`;
+
+      // 1. 先在界面上显示一条“用户消息”，让用户知道数据已同步
+      const autoUserMessage: Message = {
+        id: Date.now().toString(),
+        role: "user",
+        content: `🎯 I've set my goal: Save ${targetAmount} for ${purpose} by ${goalDate}.`,
+        timestamp: new Date(),
+        type: "text",
+      };
+      setMessages((prev) => [...prev, autoUserMessage]);
+
+      // 2. 自动调用 AI (复用 handleSend 的逻辑，但需要微调)
+      triggerAiResponse(prompt, autoUserMessage);
     }
-    setMessages((prev) => [...prev, userMessage])
-    setIsLoading(true)
+  }, [location.state]); // 依赖 location.state
+
+  // 独立的 AI 调用函数，供 handleSend 和 useEffect 复用
+  const triggerAiResponse = async (userText: string, userMsgContext?: Message) => {
+    setIsLoading(true);
+    
+    // 如果没有传入 context (说明是 useEffect 调用的)，我们需要把 history 传准
+    // 注意：这里的 history 应该包含刚发的那条 userMsgContext
+    const currentHistory = userMsgContext 
+        ? [...messages, userMsgContext].map(m => ({ role: m.role, content: m.content }))
+        : messages.map(m => ({ role: m.role, content: m.content }));
 
     try {
       const response = await fetch("http://127.0.0.1:8000/api/ai/chat", {
@@ -69,8 +102,8 @@ export function AiChatPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userText,
-          history: messages.map((m) => ({ role: m.role, content: m.content })),
-          wallet_address: "0x0000000000000000000000000000000000000000", // 占位
+          history: currentHistory,
+          wallet_address: "0x0000000000000000000000000000000000000000",
         }),
       })
 
@@ -100,7 +133,24 @@ export function AiChatPanel() {
     }
   }
 
-  // 🚀 核心修改：连接钱包并调用 createSavingsPlan
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return
+    const userText = input.trim()
+    setInput("")
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: userText,
+      timestamp: new Date(),
+      type: "text",
+    }
+    setMessages((prev) => [...prev, userMessage])
+    
+    // 调用封装好的函数
+    await triggerAiResponse(userText, userMessage);
+  }
+
   const handleConfirmPlan = async (planData: any) => {
     if (!window.ethereum) {
       alert("Please install MetaMask!");
@@ -122,22 +172,13 @@ export function AiChatPanel() {
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
 
-      // 1. 处理代币地址 (如果是 "ZETA" 或空，使用零地址)
-      // 注意：你的 AI 可能会返回具体的代币地址，这里做个简单处理
       let tokenAddress = planData.token_address;
       if (!tokenAddress || tokenAddress.length < 10 || tokenAddress === "ZETA") {
-         tokenAddress = "0x0000000000000000000000000000000000000000"; // 原生代币标识
+         tokenAddress = "0x0000000000000000000000000000000000000000"; 
       }
 
-      // 2. 转换数值为 Wei
-      // 假设 AI 返回的数值是 "100" (ether单位)，我们需要转成 Wei
-      // 如果你的 createPlan 想要 totalAmount，这里需要 AI 计算好，或者我们在前端算
-      // 这里假设 planData.savings_goal 是字符串描述
-      // 注意：API 里 createSavingsPlan 需要 targetAmount (总目标)
-      // 我们暂定 targetAmount = amountPerCycle * 10 (假设存10期)，或者你可以让 AI 传这个值
-      // 为了跑通，我先用 amountPerCycle 作为 targetAmount 的基础
       const amountPerCycleWei = ethers.parseEther(planData.amount_per_cycle.toString());
-      const targetAmountWei = amountPerCycleWei * 10n; // 默认目标是每次存额的10倍，可以改
+      const targetAmountWei = amountPerCycleWei * 10n; 
       
       console.log("Creating plan with:", {
         token: tokenAddress,
@@ -147,8 +188,6 @@ export function AiChatPanel() {
         goal: planData.savings_goal
       });
 
-      // 3. 发送交易
-      // function createSavingsPlan(token, target, perCycle, frequency, goal)
       const tx = await contract.createSavingsPlan(
         tokenAddress,
         targetAmountWei,
@@ -167,7 +206,6 @@ export function AiChatPanel() {
 
       await tx.wait();
 
-      // 4. 成功后同步给后端（可选）
       await fetch("http://127.0.0.1:8000/api/create-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

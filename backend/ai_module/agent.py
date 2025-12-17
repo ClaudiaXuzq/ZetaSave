@@ -4,25 +4,43 @@ import os
 import time
 import json
 import requests
+import httpx
 from dotenv import load_dotenv
 from openai import OpenAI
 
 load_dotenv()
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
+# -------------------------------------------------------------------------
+#  网络连接配置 (直连模式 - 无代理)
+# -------------------------------------------------------------------------
+
+# 🔴 因为你关了梯子，所以这里不需要 PROXY_URL
+# 如果以后要开梯子，再把下面这行解开，并把 proxies 加回去
+# PROXY_URL = "http://127.0.0.1:7897"
+
+# 1. 配置 HTTP 客户端 (仅设置超时，不走代理)
+custom_http_client = httpx.Client(
+    timeout=60.0
+    # proxies={ "http://": ..., "https://": ... }  <-- 直连模式下这行必须删掉
+)
+
+# 2. 读取 Qwen 的配置
 client = OpenAI(
-    api_key=DEEPSEEK_API_KEY,
-    base_url="https://api.deepseek.com"
+    api_key=os.getenv("QWEN_API_KEY"),
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    http_client=custom_http_client,  # 使用无代理的客户端
+    max_retries=2
 )
 
 BACKEND_URL = "http://127.0.0.1:8000/api/create-plan"
 
+
 # --- 1. 旧功能：单次生成 (保留以兼容) ---
 def generate_savings_plan(user_input: str) -> dict:
     """
-    [Legacy] 调用 DeepSeek 生成个性化储蓄计划（JSON）
+    [Legacy] 调用 Qwen 生成个性化储蓄计划（JSON）
     """
-    print("🤖 DeepSeek 正在生成储蓄计划 (One-shot)...")
+    print("🤖 Qwen 正在生成储蓄计划 (One-shot)...")
 
     system_prompt = f"""
 你是一个个性化储蓄规划助手，需要根据用户的自然语言描述，生成一个严格的 JSON 对象，用于写入智能合约后端。
@@ -44,45 +62,64 @@ def generate_savings_plan(user_input: str) -> dict:
 2. 字段名必须和上面的结构一致。
 """
 
-    resp = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_input}
-        ],
-        response_format={"type": "json_object"}
-    )
+    try:
+        resp = client.chat.completions.create(
+            model="qwen-plus",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_input}
+            ],
+            response_format={"type": "json_object"}
+        )
 
-    content = resp.choices[0].message.content
-    print("✨ DeepSeek 原始输出:", content)
-    data = json.loads(content)
-    return data
+        content = resp.choices[0].message.content
+        print("✨ Qwen 原始输出:", content)
+        data = json.loads(content)
+        return data
+    except Exception as e:
+        print("❌ 生成计划失败:", e)
+        return {}
 
 
-# --- 2. 新功能：多轮对话状态机 ---
+# -------------------------------------------------------------------------
+#  AI 角色设定：阿尔弗雷德 (Alfred) - 韦恩庄园管家风格
+# -------------------------------------------------------------------------
 CHAT_SYSTEM_PROMPT = f"""
-你是一个专业的储蓄规划助手 ZetaAI。你的目标是通过多轮对话，引导用户提供生成储蓄计划所需的关键信息，最后生成 JSON。
+**角色设定**：
+你不是普通的机器人，你是 "Alfred"（阿尔弗雷德），一位服务于韦恩家族的资深英式管家。
+你的用户是 "Master Wayne"（韦恩少爷/老爷），也就是你需要服务的对象。
+
+**说话风格**：
+- 极其绅士、礼貌、沉稳，使用敬语（如 "Sir", "Master", "为您效劳"）。
+- 带有淡淡的英式幽默或自嘲，但绝不冒犯。
+- 在谈论金钱时，保持专业、严谨，像在管理韦恩企业的资产一样。
+- 只有在真正需要生成计划数据时，才会展现出数据处理的高效一面。
+
+**你的任务**：
+通过优雅的对话，收集制定储蓄计划所需的4个关键信息，最后生成 JSON。
 
 【必须收集的信息】：
-1. 储蓄目标 (savings_goal) - 例如：买车、旅游
-2. 目标金额 (target_amount) - 例如：2000U
-3. 截止时间或周期 (deadline) - 例如：3个月后
-4. 风险偏好 (risk_strategy) - 激进/稳健/保守
+1. 储蓄目标 (savings_goal) - 哪怕是微小的目标，也要视为伟大的事业。
+2. 目标金额 (target_amount) - 精确的数字。
+3. 截止时间 (deadline) - 时间就是金钱。
+4. 风险偏好 (risk_strategy) - 您是想激进如蝙蝠车，还是稳健如韦恩庄园的地基？
 
 【当前上下文】：
 当前时间戳: {int(time.time())}
 
 【你的任务逻辑】：
-1. 分析用户输入和历史对话，判断上述4个信息是否已全部明确。
+1. 分析用户输入，判断信息是否齐全。
 2. 如果**信息缺失**：
-   - 用亲切、自然的口吻追问缺失的信息。一次只问1-2个问题。
-   - 返回 JSON 格式：{{ "type": "question", "content": "你的追问文本..." }}
+   - 用管家的口吻优雅地追问。
+   - 示例："恕我多嘴，老爷，我们要为这项伟大的计划准备多少预算呢？还是说，您打算直接买下整家公司？"
+   - 返回 JSON: {{ "type": "question", "content": "你的管家式追问..." }}
 3. 如果**信息已齐全**：
-   - 总结用户需求，并生成最终计划数据。
-   - 返回 JSON 格式：
+   - 优雅地确认，并生成计划。
+   - 示例："正如您所愿，Master Wayne。这是为您拟定的资产增值方案，请过目。如果是为了哥谭市的未来，这笔钱花得很值。"
+   - 返回 JSON:
      {{
        "type": "plan",
-       "content": "好的，我已经为你生成了专属储蓄计划，请确认...",
+       "content": "管家式的确认话术...",
        "data": {{
          "user_wallet_address": "用户的钱包地址(从上下文中找，找不到填 '0xUnknown')",
          "savings_goal": "...",
@@ -102,17 +139,15 @@ def chat_with_ai(user_input: str, history: list = []) -> dict:
     """
     处理多轮对话，返回 {"type": "question" | "plan", "content": "...", "data": ...}
     """
-    # 构造历史对话文本供 AI 参考
     history_text = ""
     if history:
         history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
     
-    # 动态注入 User Input
     user_prompt = f"【对话历史】:\n{history_text}\n\n【用户当前输入】:\n{user_input}"
 
     try:
         resp = client.chat.completions.create(
-            model="deepseek-chat",
+            model="qwen-plus",
             messages=[
                 {"role": "system", "content": CHAT_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
@@ -123,7 +158,7 @@ def chat_with_ai(user_input: str, history: list = []) -> dict:
         return json.loads(content)
     except Exception as e:
         print("Chat Error:", e)
-        return {"type": "question", "content": "抱歉，系统繁忙，请稍后再试。"}
+        return {"type": "question", "content": "Master Wayne，似乎通讯线路受到了干扰... (请检查后端日志)"}
 
 
 def send_to_backend(plan_data: dict):
@@ -139,31 +174,15 @@ def send_to_backend(plan_data: dict):
 
 
 if __name__ == "__main__":
-    # 本地测试 Chat 模式
-    print("--- 开始测试多轮对话 ---")
+    print("--- 开始测试 Alfred (Qwen版 - 直连模式) ---")
     
-    # 模拟第1轮：用户只是打招呼
-    res1 = chat_with_ai("你好，我想存钱", [])
-    print("AI Round 1:", res1['content']) 
-    # 预期 AI 应该追问目标
+    # 模拟测试
+    res1 = chat_with_ai("你好，我想存点钱", [])
+    print("Alfred Round 1:", res1.get('content')) 
 
-    # 模拟第2轮：用户回答目标，但没说金额
     history = [
-        {"role": "user", "content": "你好，我想存钱"},
-        {"role": "assistant", "content": res1['content']}
+        {"role": "user", "content": "你好，我想存点钱"},
+        {"role": "assistant", "content": res1.get('content', '')}
     ]
-    res2 = chat_with_ai("我想去日本旅游", history)
-    print("AI Round 2:", res2['content'])
-    # 预期 AI 追问金额和时间
-
-    # 模拟第3轮：信息全了
-    history.append({"role": "user", "content": "我想去日本旅游"})
-    history.append({"role": "assistant", "content": res2['content']})
-    res3 = chat_with_ai("预算2万，大概半年后去，我要稳健一点", history)
-    
-    if res3['type'] == 'plan':
-        print("✅ 最终生成计划:", json.dumps(res3['data'], indent=2, ensure_ascii=False))
-        # 自动写入后端测试
-        send_to_backend(res3['data'])
-    else:
-        print("AI Round 3 (还在追问):", res3['content'])
+    res2 = chat_with_ai("为了去巴黎，大概需要5000刀", history)
+    print("Alfred Round 2:", res2.get('content'))
