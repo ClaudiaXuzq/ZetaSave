@@ -3,7 +3,10 @@
     "allow": [
       "Bash(cat:*)",
       "Bash(python:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(ls:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }
