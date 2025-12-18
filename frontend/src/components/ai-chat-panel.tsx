@@ -6,15 +6,18 @@ import { Button } from "@/components/ui/button"
 import { Send, Sparkles, Bot, User, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ethers } from "ethers"
+import { ZETASAVE_CONTRACT } from "@/config/contracts"
+import ZetaSaveCrossChainABI from "@/abi/ZetaSaveCrossChain.json"
 
-// 替换成你的真实合约地址
-const CONTRACT_ADDRESS = "0x3E0c67B0dB328BFE75d68b5236fD234E01E8788b";
-
-// 这是一个简化的 ABI，只包含我们需要用的函数
-const CONTRACT_ABI = [
-  "function createSavingsPlan(address tokenAddress, uint256 targetAmount, uint256 amountPerCycle, uint256 cycleFrequency, string savingsGoal) public returns (uint256)",
-  "event PlanCreated(address indexed user, uint256 planId, uint256 targetAmount, address tokenAddress)"
-];
+// ZetaChain Athens Testnet 配置
+const ZETACHAIN_ATHENS = {
+  chainId: 7001,
+  chainIdHex: "0x1b59",
+  chainName: "ZetaChain Athens Testnet",
+  rpcUrls: ["https://zetachain-athens-evm.blockpi.network/v1/rpc/public"],
+  nativeCurrency: { name: "ZETA", symbol: "ZETA", decimals: 18 },
+  blockExplorerUrls: ["https://athens.explorer.zetachain.com"],
+};
 
 interface Message {
   id: string
@@ -161,7 +164,7 @@ export function AiChatPanel() {
     setMessages(prev => [...prev, {
       id: loadingMsgId,
       role: "assistant",
-      content: "Requesting signature in MetaMask... Please confirm the transaction. 🦊",
+      content: "Checking network and preparing transaction... 🦊",
       timestamp: new Date(),
       type: "transaction_status",
       status: "pending"
@@ -169,38 +172,156 @@ export function AiChatPanel() {
 
     try {
       const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
 
-      let tokenAddress = planData.token_address;
-      if (!tokenAddress || tokenAddress.length < 10 || tokenAddress === "ZETA") {
-         tokenAddress = "0x0000000000000000000000000000000000000000"; 
+      // 检查并切换到 ZetaChain Athens Testnet
+      const network = await provider.getNetwork();
+      if (Number(network.chainId) !== ZETACHAIN_ATHENS.chainId) {
+        setMessages(prev => prev.map(m =>
+          m.id === loadingMsgId
+          ? { ...m, content: "Switching to ZetaChain Athens Testnet... 🔄" }
+          : m
+        ));
+
+        try {
+          await window.ethereum.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: ZETACHAIN_ATHENS.chainIdHex }],
+          });
+        } catch (switchError: any) {
+          // 如果网络不存在，添加它
+          if (switchError.code === 4902) {
+            await window.ethereum.request({
+              method: "wallet_addEthereumChain",
+              params: [{
+                chainId: ZETACHAIN_ATHENS.chainIdHex,
+                chainName: ZETACHAIN_ATHENS.chainName,
+                rpcUrls: ZETACHAIN_ATHENS.rpcUrls,
+                nativeCurrency: ZETACHAIN_ATHENS.nativeCurrency,
+                blockExplorerUrls: ZETACHAIN_ATHENS.blockExplorerUrls,
+              }],
+            });
+          } else {
+            throw switchError;
+          }
+        }
       }
 
-      const amountPerCycleWei = ethers.parseEther(planData.amount_per_cycle.toString());
-      const targetAmountWei = amountPerCycleWei * 10n; 
-      
-      console.log("Creating plan with:", {
-        token: tokenAddress,
-        target: targetAmountWei.toString(),
-        perCycle: amountPerCycleWei.toString(),
-        freq: planData.cycle_frequency_seconds,
-        goal: planData.savings_goal
+      setMessages(prev => prev.map(m =>
+        m.id === loadingMsgId
+        ? { ...m, content: "Requesting signature in MetaMask... Please confirm the transaction. 🦊" }
+        : m
+      ));
+
+      const signer = await provider.getSigner();
+      const contract = new ethers.Contract(
+        ZETASAVE_CONTRACT.address,
+        ZetaSaveCrossChainABI,
+        signer
+      );
+
+      // 处理 token 地址
+      let tokenAddress = planData.token_address;
+      if (!tokenAddress || tokenAddress.length < 10 || tokenAddress === "ZETA") {
+         tokenAddress = "0x0000000000000000000000000000000000000000";
+      } else {
+         tokenAddress = ethers.getAddress(tokenAddress);
+      }
+
+      // 计算目标金额 (amount_per_cycle * 10 作为总目标)
+      // 截断到最多 18 位小数，避免 ethers.parseEther 报错
+      const amountStr = parseFloat(planData.amount_per_cycle).toFixed(18);
+      const amountPerCycleWei = ethers.parseEther(amountStr);
+      const targetAmountWei = amountPerCycleWei * 10n;
+
+      // 使用象征性的初始存款（0.0001 token），用户稍后可以在 Dashboard 进行真正的存款
+      const symbolicDeposit = ethers.parseEther("0.0001");
+
+      // 检查 token 是否被合约支持
+      setMessages(prev => prev.map(m =>
+        m.id === loadingMsgId
+        ? { ...m, content: "Checking if token is supported... 🔍" }
+        : m
+      ));
+
+      const isSupported = await contract.isTokenSupported(tokenAddress);
+      if (!isSupported) {
+        throw new Error(
+          `Token ${tokenAddress} is not supported by the contract. ` +
+          `The contract owner needs to call addSupportedToken() first. ` +
+          `Please contact the administrator or run the registerTokens script.`
+        );
+      }
+
+      // ERC-20 ABI (需要 approve 和 balanceOf 函数)
+      const ERC20_ABI = [
+        "function approve(address spender, uint256 amount) public returns (bool)",
+        "function balanceOf(address account) public view returns (uint256)"
+      ];
+
+      // 创建 token 合约实例
+      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+
+      // 检查用户的 ZRC-20 余额
+      setMessages(prev => prev.map(m =>
+        m.id === loadingMsgId
+        ? { ...m, content: "Checking your ZRC-20 token balance... 💰" }
+        : m
+      ));
+
+      const userAddress = await signer.getAddress();
+      const balance = await tokenContract.balanceOf(userAddress);
+
+      if (balance < symbolicDeposit) {
+        throw new Error(
+          `Insufficient ZRC-20 token balance!\n\n` +
+          `Required: ${ethers.formatEther(symbolicDeposit)} tokens\n` +
+          `Your balance: ${ethers.formatEther(balance)} tokens\n\n` +
+          `Please get ZRC-20 tokens from the faucet:\n` +
+          `🌐 https://labs.zetachain.com/get-zeta`
+        );
+      }
+
+      setMessages(prev => prev.map(m =>
+        m.id === loadingMsgId
+        ? { ...m, content: "Balance sufficient! Approving ZRC-20 token... Please confirm in MetaMask. 🦊" }
+        : m
+      ));
+
+      // 步骤 1: Approve ZRC-20 token
+      const approveTx = await tokenContract.approve(
+        ZETASAVE_CONTRACT.address,
+        symbolicDeposit
+      );
+
+      console.log("Approve transaction sent:", approveTx.hash);
+      await approveTx.wait();
+
+      setMessages(prev => prev.map(m =>
+        m.id === loadingMsgId
+        ? { ...m, content: "Token approved! Creating savings plan... 🦊" }
+        : m
+      ));
+
+      console.log("Creating plan with createPlanDirect:", {
+        zrc20: tokenAddress,
+        targetAmount: targetAmountWei.toString(),
+        savingsGoal: planData.savings_goal,
+        initialDeposit: symbolicDeposit.toString()
       });
 
-      const tx = await contract.createSavingsPlan(
+      // 步骤 2: 调用 createPlanDirect (无需 value 参数，因为是 ERC-20)
+      const tx = await contract.createPlanDirect(
         tokenAddress,
         targetAmountWei,
-        amountPerCycleWei,
-        BigInt(planData.cycle_frequency_seconds),
-        planData.savings_goal
+        planData.savings_goal,
+        symbolicDeposit  // 象征性初始存款
       );
 
       console.log("Transaction sent:", tx.hash);
 
-      setMessages(prev => prev.map(m => 
-        m.id === loadingMsgId 
-        ? { ...m, content: `Transaction sent! Waiting for confirmation... ⏳\nHash: ${tx.hash.slice(0, 10)}...`, status: "pending" } 
+      setMessages(prev => prev.map(m =>
+        m.id === loadingMsgId
+        ? { ...m, content: `Transaction sent! Waiting for confirmation... ⏳\nHash: ${tx.hash.slice(0, 10)}...`, status: "pending" }
         : m
       ));
 
@@ -212,26 +333,26 @@ export function AiChatPanel() {
         body: JSON.stringify(planData),
       });
 
-      setMessages(prev => prev.map(m => 
-        m.id === loadingMsgId 
-        ? { 
-            ...m, 
-            content: `✅ Plan successfully created on-chain! \nYou can now make your first deposit using the dashboard.`, 
+      setMessages(prev => prev.map(m =>
+        m.id === loadingMsgId
+        ? {
+            ...m,
+            content: `✅ Plan successfully created on-chain! \n\nA symbolic deposit of 0.0001 token has been made to initialize your plan.\n\nYou can now manage deposits and withdrawals in the Dashboard.`,
             status: "success",
             txHash: tx.hash
-          } 
+          }
         : m
       ));
 
     } catch (error: any) {
       console.error("Transaction failed:", error);
-      setMessages(prev => prev.map(m => 
-        m.id === loadingMsgId 
-        ? { 
-            ...m, 
-            content: `❌ Transaction failed: ${error.reason || error.message || "Unknown error"}`, 
-            status: "error" 
-          } 
+      setMessages(prev => prev.map(m =>
+        m.id === loadingMsgId
+        ? {
+            ...m,
+            content: `❌ Transaction failed: ${error.reason || error.message || "Unknown error"}`,
+            status: "error"
+          }
         : m
       ));
     }

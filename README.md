@@ -72,6 +72,35 @@ npm run dev
 
 访问 http://localhost:5173 打开 ZetaSave 网页
 
+### 4. 获取测试 ZRC-20 Tokens
+
+**重要**: 要创建储蓄计划，你需要持有 ZRC-20 tokens（跨链资产的包装 token）。
+
+**ZRC-20 vs ZETA 的区别**:
+- **ZETA**: ZetaChain 原生 token，用于支付 gas 费用
+- **ZRC-20**: 从其他链（如 ETH Sepolia, Base Sepolia）桥接来的跨链资产（ETH, USDC 等）
+
+**支持的 ZRC-20 Tokens**:
+- ETH Sepolia ETH: `0x05BA149A7bd6dC1F937fA9046A9e05C05f3b18b0`
+- Base Sepolia ETH: `0x236b0DE675cC8F46AE186897fCCeFe3370C9eDeD`
+- ETH Sepolia USDC: `0xcC683A782f4B30c138787CB5576a86AF66fdc31d`
+- Base Sepolia USDC: `0xd0eFed75622e7AA4555EE44F296dA3744E3ceE19`
+
+**如何获取 ZRC-20 测试 Tokens**:
+1. 访问 ZetaChain Labs Faucet: https://labs.zetachain.com/get-zeta
+2. 选择你想要的源链（ETH Sepolia 或 Base Sepolia）
+3. 选择 token 类型（ETH 或 USDC）
+4. 输入你的钱包地址并领取
+5. 等待跨链桥接完成（通常需要几分钟）
+6. 在 MetaMask 切换到 ZetaChain Athens Testnet 查看余额
+
+**注册 Tokens（合约 Owner）**:
+如果你是合约 owner，需要先注册这些 tokens：
+```bash
+cd scripts
+PRIVATE_KEY=your_private_key npx ts-node registerTokens.ts
+```
+
 ---
 
 ## FastAPI 接口设计
