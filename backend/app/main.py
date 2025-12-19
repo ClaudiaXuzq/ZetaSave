@@ -1,10 +1,10 @@
-# main.py
+# backend/app/main.py
 # 安装依赖: pip install fastapi uvicorn pydantic web3
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any  # <--- 修改了这里，增加了 List, Dict, Any
+from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
 import datetime
 
@@ -191,7 +191,45 @@ async def get_plan_progress(address: str, plan_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"服务器内部错误: {e}")
 
-# --- 4. 新增：AI 多轮对话接口 ---
+# =======================================================
+#  [阶段一] Alfred 随机问候 (Random Greetings)
+# =======================================================
+
+class GreetingRequest(BaseModel):
+    savings_goal: str       # 例如 "买蝙蝠车"
+    current_amount: float   # 例如 500.0
+    target_amount: float    # 例如 10000.0
+
+@app.post("/api/ai/greeting")
+async def get_greeting(req: GreetingRequest):
+    """
+    首页加载时调用，返回 Alfred 的随机问候
+    """
+    # 动态导入，避免循环引用
+    from ai_module.agent import generate_greeting
+    
+    # 简单的进度计算逻辑，防止除以零
+    progress = 0.0
+    if req.target_amount > 0:
+        progress = round((req.current_amount / req.target_amount) * 100, 1)
+        
+    print(f"🎩 Alfred 正在思考问候语... (目标: {req.savings_goal}, 进度: {progress}%)")
+
+    # 调用 AI
+    greeting_text = generate_greeting(req.savings_goal, progress)
+    
+    return {
+        "status": "success",
+        "greeting": greeting_text,
+        "progress_display": f"{progress}%"
+    }
+
+# =======================================================
+#  [功能结束]
+# =======================================================
+
+
+# --- 4. AI 多轮对话接口 (已升级：支持读取链上数据) ---
 
 class ChatMessage(BaseModel):
     role: str      # 'user' 或 'assistant'
@@ -206,17 +244,39 @@ class ChatRequest(BaseModel):
 async def chat_endpoint(req: ChatRequest):
     """
     前端调用此接口进行多轮对话。
+    已集成：读取用户钱包余额和 NFT 数量
     """
-    # 动态导入 agent 避免循环引用或初始化问题
+    # 动态导入 agent 避免循环引用
     from ai_module.agent import chat_with_ai
     
+    # --- [新增] 获取链上数据逻辑 ---
+    chain_data = {"balance": 0.0, "nft_count": 0}
+    
+    # 只有当地址不是默认值且 Web3 服务可用时才查询
+    if req.wallet_address and req.wallet_address != "0xUnknown" and web3_service:
+        try:
+            print(f"🔍 正在读取链上数据: {req.wallet_address}")
+            # 1. 查余额 (需确保 Web3Service 已更新 get_native_balance 方法)
+            balance = web3_service.get_native_balance(req.wallet_address)
+            # 2. 查 NFT 数量
+            nft_ids = web3_service.get_user_nfts(req.wallet_address)
+            
+            chain_data = {
+                "balance": balance,
+                "nft_count": len(nft_ids)
+            }
+            print(f"📊 链上数据获取成功: {chain_data}")
+        except Exception as e:
+            print(f"⚠️ 读取链上数据失败 (不影响对话): {e}")
+    # -----------------------------
+
     # 转换 Pydantic 对象为 dict 列表给 agent 用
     history_dicts = [{"role": h.role, "content": h.content} for h in req.history]
     
     print(f"🤖 收到 AI 请求: {req.message}")
 
-    # 调用 AI 核心逻辑
-    ai_response = chat_with_ai(req.message, history_dicts)
+    # 调用 AI 核心逻辑 (传入 chain_data)
+    ai_response = chat_with_ai(req.message, history_dicts, chain_data=chain_data)
     
     # 构造返回给前端的数据
     response_data = {

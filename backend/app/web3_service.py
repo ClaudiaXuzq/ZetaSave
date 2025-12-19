@@ -1,4 +1,4 @@
-# web3_service.py
+# backend/app/web3_service.py
 # Web3 服务层 - 处理与智能合约的所有交互
 
 import json
@@ -152,6 +152,30 @@ class Web3Service:
                     print(f"❌ 合约调用失败，已达最大重试次数")
 
         raise Web3ConnectionError(f"合约调用失败: {last_error}")
+
+    # --- 新增功能：获取原生代币余额 ---
+    def get_native_balance(self, address: str) -> float:
+        """
+        获取用户 ZETA 原生代币余额
+        
+        Returns:
+            float: 余额 (ZETA 单位，保留4位小数)
+        """
+        if not address or not is_address(address):
+            return 0.0
+            
+        try:
+            # 确保地址格式正确
+            checksum_addr = to_checksum_address(address)
+            # 获取 Wei 单位的余额
+            balance_wei = self.w3.eth.get_balance(checksum_addr)
+            # 转换为 Ether (ZETA) 单位
+            balance_zeta = self.w3.from_wei(balance_wei, 'ether')
+            # 保留4位小数
+            return round(float(balance_zeta), 4)
+        except Exception as e:
+            print(f"❌ 获取余额失败: {e}")
+            return 0.0
 
     def get_user_nfts(self, user_address: str) -> List[int]:
         """
