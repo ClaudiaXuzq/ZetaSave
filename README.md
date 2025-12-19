@@ -36,87 +36,70 @@ ZetaSave/
 
 ---
 
-## 运行步骤
+## 快速启动
 
-### 1. 安装依赖
+### 1. 配置环境变量
 
-在 `ZetaSave/backend` 目录执行：
+在 `backend/` 目录下新建 `.env` 文件：
 
 ```
+QWEN_API_KEY=你的API密钥
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+ZETA_RPC_URL=https://zetachain-athens-evm.blockpi.network/v1/rpc/public
+ZETA_CONTRACT_ADDRESS=0x00C44615A4e7DE83A82C62A575B1A33B473312Cc
+WEB3_TIMEOUT=30
+```
 
+### 2. 启动后端
+
+```bash
+cd backend
 pip install -r requirements.txt
-
-```
-
-如果尚未生成 `requirements.txt`，可直接安装核心依赖：
-
-```
-
-pip install fastapi uvicorn pydantic requests openai python-dotenv
-
-```
-
-### 2. 配置 DeepSeek API Key
-
-在 `ZetaSave/backend` 或项目根目录创建 `.env` 文件，内容示例：
-
-```
-
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
-
-```
-
-> 注意：`.env` 不应提交到 GitHub，可在 `.gitignore` 中忽略。[web:16]
-
-### 3. 启动后端服务
-
-在 `ZetaSave/backend` 目录运行：
-
-```
-
 python run_server.py
-
 ```
 
-成功后，终端会显示类似：
+后端运行在 http://127.0.0.1:8000，API 文档：http://127.0.0.1:8000/docs
 
+### 3. 启动前端
+
+新开终端：
+
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
-Uvicorn running on http://127.0.0.1:8000
+访问 http://localhost:5173 打开 ZetaSave 网页
 
+### 4. 获取测试 ZRC-20 Tokens
+
+**重要**: 要创建储蓄计划，你需要持有 ZRC-20 tokens（跨链资产的包装 token）。
+
+**ZRC-20 vs ZETA 的区别**:
+- **ZETA**: ZetaChain 原生 token，用于支付 gas 费用
+- **ZRC-20**: 从其他链（如 ETH Sepolia, Base Sepolia）桥接来的跨链资产（ETH, USDC 等）
+
+**支持的 ZRC-20 Tokens**:
+- ETH Sepolia ETH: `0x05BA149A7bd6dC1F937fA9046A9e05C05f3b18b0`
+- Base Sepolia ETH: `0x236b0DE675cC8F46AE186897fCCeFe3370C9eDeD`
+- ETH Sepolia USDC: `0xcC683A782f4B30c138787CB5576a86AF66fdc31d`
+- Base Sepolia USDC: `0xd0eFed75622e7AA4555EE44F296dA3744E3ceE19`
+
+**如何获取 ZRC-20 测试 Tokens**:
+1. 访问 ZetaChain Labs Faucet: https://labs.zetachain.com/get-zeta
+2. 选择你想要的源链（ETH Sepolia 或 Base Sepolia）
+3. 选择 token 类型（ETH 或 USDC）
+4. 输入你的钱包地址并领取
+5. 等待跨链桥接完成（通常需要几分钟）
+6. 在 MetaMask 切换到 ZetaChain Athens Testnet 查看余额
+
+**注册 Tokens（合约 Owner）**:
+如果你是合约 owner，需要先注册这些 tokens：
+```bash
+cd scripts
+PRIVATE_KEY=your_private_key npx ts-node registerTokens.ts
 ```
-
-可访问 `http://127.0.0.1:8000/docs` 查看自动生成的 Swagger 文档并测试接口。[web:19]
-
-### 4. 运行 AI 模块（DeepSeek → 后端）
-
-另开一个终端，在 `ZetaSave/backend` 目录执行：
-
-```
-
-python ai_module/agent.py
-
-```
-
-流程：
-
-1. `agent.py` 调用 DeepSeek（OpenAI 兼容接口），根据预设的用户描述生成储蓄计划 JSON：  
-```
-
-{
-"user_wallet_address": "0xAnWei888",
-"savings_goal": "买 MacBook Pro",
-"token_address": "0x5F04bbc4d96b5cffc2363e472090F3A8344E4e56",
-"amount_per_cycle": "166.67",
-"cycle_frequency_seconds": 604800,
-"start_time_timestamp": 1765458969,
-"risk_strategy": "conservative",
-"nudge_enabled": true
-}
-
-```  
-2. `agent.py` 将该 JSON 通过 `POST /api/create-plan` 写入后端。  
-3. 后端返回 `{"status": "success", "plan_id": "plan_1"}`，表示已成功写入“数据面板”。[web:19]
 
 ---
 

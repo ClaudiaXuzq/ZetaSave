@@ -6,9 +6,21 @@ import { Button } from "@/components/ui/button"
 import { Send, Sparkles, Bot, User, Loader2, CheckCircle2, AlertCircle, Wallet } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ethers } from "ethers"
+import { ZETASAVE_CONTRACT } from "@/config/contracts"
+import ZetaSaveCrossChainABI from "@/abi/ZetaSaveCrossChain.json"
 
 // 引入我们之前创建的思考组件
 import ThinkingIndicator from "@/components/ThinkingIndicator"
+
+// ZetaChain Athens Testnet 配置
+const ZETACHAIN_ATHENS = {
+  chainId: 7001,
+  chainIdHex: "0x1b59",
+  chainName: "ZetaChain Athens Testnet",
+  rpcUrls: ["https://zetachain-athens-evm.blockpi.network/v1/rpc/public"],
+  nativeCurrency: { name: "ZETA", symbol: "ZETA", decimals: 18 },
+  blockExplorerUrls: ["https://athens.explorer.zetachain.com"],
+};
 
 // 替换成你的真实合约地址
 const CONTRACT_ADDRESS = "0x3E0c67B0dB328BFE75d68b5236fD234E01E8788b";
@@ -184,7 +196,7 @@ export function AiChatPanel() {
     setMessages(prev => [...prev, {
       id: loadingMsgId,
       role: "assistant",
-      content: "Preparing the contract for your signature, sir. Please check your wallet. 🦊",
+      content: "Checking network and preparing the contract for your signature, sir. Please check your wallet. 🦊",
       timestamp: new Date(),
       type: "transaction_status",
       status: "pending"
@@ -193,30 +205,146 @@ export function AiChatPanel() {
     try {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
+      
       // 更新地址，以防用户中途切换了钱包
       setWalletAddress(signer.address); 
       
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+      // 检查并切换到 ZetaChain Athens Testnet
+      const network = await provider.getNetwork();
+      if (Number(network.chainId) !== ZETACHAIN_ATHENS.chainId) {
+        setMessages(prev => prev.map(m =>
+          m.id === loadingMsgId
+          ? { ...m, content: "Switching to ZetaChain Athens Testnet... 🔄" }
+          : m
+        ));
 
-      let tokenAddress = planData.token_address;
-      if (!tokenAddress || tokenAddress.length < 10 || tokenAddress === "ZETA") {
-         tokenAddress = "0x0000000000000000000000000000000000000000"; 
+        try {
+          await window.ethereum.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: ZETACHAIN_ATHENS.chainIdHex }],
+          });
+        } catch (switchError: any) {
+          // 如果网络不存在，添加它
+          if (switchError.code === 4902) {
+            await window.ethereum.request({
+              method: "wallet_addEthereumChain",
+              params: [{
+                chainId: ZETACHAIN_ATHENS.chainIdHex,
+                chainName: ZETACHAIN_ATHENS.chainName,
+                rpcUrls: ZETACHAIN_ATHENS.rpcUrls,
+                nativeCurrency: ZETACHAIN_ATHENS.nativeCurrency,
+                blockExplorerUrls: ZETACHAIN_ATHENS.blockExplorerUrls,
+              }],
+            });
+          } else {
+            throw switchError;
+          }
+        }
       }
 
-      const amountPerCycleWei = ethers.parseEther(planData.amount_per_cycle.toString());
-      const targetAmountWei = amountPerCycleWei * 10n; // 简化逻辑：假设总目标是单期的10倍，或根据实际 planData.target_amount 转换
-      
-      const tx = await contract.createSavingsPlan(
+      setMessages(prev => prev.map(m =>
+        m.id === loadingMsgId
+        ? { ...m, content: "Requesting signature in MetaMask... Please confirm the transaction. 🦊" }
+        : m
+      ));
+
+      // 重新获取 signer 以防网络切换后状态变更
+      const currentSigner = await provider.getSigner();
+      const contract = new ethers.Contract(
+        ZETASAVE_CONTRACT.address,
+        ZetaSaveCrossChainABI,
+        currentSigner
+      );
+
+      // 1. 处理 token 地址 (确保格式正确)
+      let tokenAddress = planData.token_address;
+      if (!tokenAddress || tokenAddress.length < 10 || tokenAddress === "ZETA") {
+         tokenAddress = "0x0000000000000000000000000000000000000000";
+      } else {
+         tokenAddress = ethers.getAddress(tokenAddress);
+      }
+
+      // 2. 计算金额 (安全转换，防止精度报错)
+      const amountStr = parseFloat(planData.amount_per_cycle).toFixed(18);
+      const amountPerCycleWei = ethers.parseEther(amountStr);
+      const targetAmountWei = amountPerCycleWei * 10n;
+
+      // 象征性初始存款 (0.0001)
+      const symbolicDeposit = ethers.parseEther("0.0001");
+
+      // 3. 检查 Token 是否支持
+      setMessages(prev => prev.map(m =>
+        m.id === loadingMsgId
+        ? { ...m, content: "Checking if token is supported... 🔍" }
+        : m
+      ));
+
+      const isSupported = await contract.isTokenSupported(tokenAddress);
+      if (!isSupported) {
+        throw new Error(`Token ${tokenAddress} is not supported. Please contact admin.`);
+      }
+
+      // 4. 准备 ERC-20 合约
+      const ERC20_ABI = [
+        "function approve(address spender, uint256 amount) public returns (bool)",
+        "function balanceOf(address account) public view returns (uint256)"
+      ];
+      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, currentSigner);
+
+      // 5. 检查余额
+      setMessages(prev => prev.map(m =>
+        m.id === loadingMsgId
+        ? { ...m, content: "Checking your ZRC-20 token balance... 💰" }
+        : m
+      ));
+
+      const userAddress = await currentSigner.getAddress();
+      const balance = await tokenContract.balanceOf(userAddress);
+
+      if (balance < symbolicDeposit) {
+        throw new Error(`Insufficient ZRC-20 balance! Required: 0.0001 ZETA.`);
+      }
+
+      // 6. 核心步骤：授权 (Approve)
+      setMessages(prev => prev.map(m =>
+        m.id === loadingMsgId
+        ? { ...m, content: "Balance sufficient! Approving ZRC-20 token... Please confirm in MetaMask. 🦊" }
+        : m
+      ));
+
+      const approveTx = await tokenContract.approve(
+        ZETASAVE_CONTRACT.address,
+        symbolicDeposit
+      );
+      console.log("Approve transaction sent:", approveTx.hash);
+      await approveTx.wait();
+
+      // 7. 发起创建计划交易
+      setMessages(prev => prev.map(m =>
+        m.id === loadingMsgId
+        ? { ...m, content: "Token approved! Creating savings plan... 🦊" }
+        : m
+      ));
+
+      console.log("Creating plan with createPlanDirect:", {
+        zrc20: tokenAddress,
+        targetAmount: targetAmountWei.toString(),
+        savingsGoal: planData.savings_goal,
+        initialDeposit: symbolicDeposit.toString()
+      });
+
+      const tx = await contract.createPlanDirect(
         tokenAddress,
         targetAmountWei,
-        amountPerCycleWei,
-        BigInt(planData.cycle_frequency_seconds),
-        planData.savings_goal
+        planData.savings_goal,
+        symbolicDeposit  // 象征性初始存款
       );
+
+      console.log("Transaction sent:", tx.hash);
 
       setMessages(prev => prev.map(m => 
         m.id === loadingMsgId 
-        ? { ...m, content: `Transaction broadcasted. Awaiting confirmation... ⏳\nTx: ${tx.hash.slice(0, 10)}...`, status: "pending" } 
+        ? { ...m, content: `Transaction broadcasted. Awaiting confirmation... ⏳\nTx: ${tx.hash.slice(0, 10)}...`, status: "pending" }
         : m
       ));
 
@@ -233,10 +361,14 @@ export function AiChatPanel() {
         m.id === loadingMsgId 
         ? { 
             ...m, 
-            content: `✅ Splendid! The plan is now immutable on the blockchain.\nReference: ${tx.hash.slice(0, 10)}...`, 
+            content: `✅ Splendid! The plan is now immutable on the blockchain.
+Reference: ${tx.hash.slice(0, 10)}...
+
+A symbolic deposit of 0.0001 token has been made to initialize your plan.
+You can now manage deposits and withdrawals in the Dashboard.`, 
             status: "success",
             txHash: tx.hash
-          } 
+          }
         : m
       ));
 
@@ -246,15 +378,15 @@ export function AiChatPanel() {
         m.id === loadingMsgId 
         ? { 
             ...m, 
-            content: `❌ I'm afraid the transaction failed, sir: ${error.reason || "User rejected or network error"}`, 
+            content: `❌ I'm afraid the transaction failed, sir: ${error.reason || error.message || "User rejected or network error"}`, 
             status: "error" 
-          } 
+          }
         : m
       ));
     }
   }
 
- return (
+  return (
     <Card className="h-[calc(100vh-40px)] flex flex-col shadow-none border-0 bg-transparent">
       {/* Header */}
       <div className="px-4 py-3 border-b border-border flex items-center gap-3">
@@ -335,20 +467,20 @@ export function AiChatPanel() {
             {message.type === "transaction_status" && (
                <div className="ml-11 max-w-[80%]">
                  <div className={cn("p-3 rounded-lg border flex items-center gap-3 text-xs shadow-sm bg-background", 
-                    message.status === "pending" ? "border-yellow-500/30 text-yellow-600" : 
-                    message.status === "success" ? "border-green-500/30 text-green-600" : "border-red-500/30 text-red-600")}>
-                    
-                    {message.status === "pending" && <Loader2 className="w-4 h-4 animate-spin"/>}
-                    {message.status === "success" && <CheckCircle2 className="w-4 h-4"/>}
-                    {message.status === "error" && <AlertCircle className="w-4 h-4"/>}
-                    
-                    <div className="flex flex-col">
-                      <span className="font-semibold uppercase tracking-wider">
-                        {message.status === "pending" ? "Executing..." : 
-                         message.status === "success" ? "Confirmed" : "Failed"}
-                      </span>
-                      <span className="opacity-90 truncate max-w-[200px] text-muted-foreground">{message.content}</span>
-                    </div>
+                   message.status === "pending" ? "border-yellow-500/30 text-yellow-600" : 
+                   message.status === "success" ? "border-green-500/30 text-green-600" : "border-red-500/30 text-red-600")}>
+                   
+                   {message.status === "pending" && <Loader2 className="w-4 h-4 animate-spin"/>}
+                   {message.status === "success" && <CheckCircle2 className="w-4 h-4"/>}
+                   {message.status === "error" && <AlertCircle className="w-4 h-4"/>}
+                   
+                   <div className="flex flex-col">
+                     <span className="font-semibold uppercase tracking-wider">
+                       {message.status === "pending" ? "Executing..." : 
+                        message.status === "success" ? "Confirmed" : "Failed"}
+                     </span>
+                     <span className="opacity-90 truncate max-w-[200px] text-muted-foreground">{message.content}</span>
+                   </div>
                  </div>
                </div>
             )}
