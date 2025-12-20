@@ -103,7 +103,16 @@ export function getZRC20ForSourceChain(
   return undefined
 }
 
-// Gateway ABI (minimal - only depositAndCall)
+// RevertOptions struct for Gateway calls
+export type RevertOptions = {
+  revertAddress: `0x${string}`
+  callOnRevert: boolean
+  abortAddress: `0x${string}`
+  revertMessage: `0x${string}`
+  onRevertGasLimit: bigint
+}
+
+// Gateway ABI (with RevertOptions)
 export const GATEWAY_ABI = [
   {
     name: 'depositAndCall',
@@ -112,6 +121,17 @@ export const GATEWAY_ABI = [
     inputs: [
       { name: 'receiver', type: 'address' },
       { name: 'payload', type: 'bytes' },
+      {
+        name: 'revertOptions',
+        type: 'tuple',
+        components: [
+          { name: 'revertAddress', type: 'address' },
+          { name: 'callOnRevert', type: 'bool' },
+          { name: 'abortAddress', type: 'address' },
+          { name: 'revertMessage', type: 'bytes' },
+          { name: 'onRevertGasLimit', type: 'uint256' },
+        ],
+      },
     ],
     outputs: [],
   },

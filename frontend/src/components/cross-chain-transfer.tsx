@@ -17,7 +17,7 @@ export function CrossChainTransfer() {
   const { assets, isConnected } = useMultiChainBalances()
   const { deposit, isPending, isConfirming, isSuccess, error, reset, isOnSourceChain } = useCrossChainDeposit()
   const { plans, isLoading: isLoadingPlans } = useUserPlans()
-  const { chain } = useAccount()
+  const { chain, address } = useAccount()
   const { switchChain, isPending: isSwitchingChain } = useSwitchChain()
   
   const [fromAsset, setFromAsset] = useState<string>("")
@@ -128,8 +128,17 @@ export function CrossChainTransfer() {
         return
       }
 
+      if (!address) {
+        toast({
+          title: "Wallet Not Connected",
+          description: "Please connect your wallet first",
+          variant: "destructive",
+        })
+        return
+      }
+
       // Call deposit function (assuming planId is a number)
-      deposit(parseInt(planId), amountWei)
+      deposit(parseInt(planId), amountWei, address)
 
       toast({
         title: "Transaction Submitted",
