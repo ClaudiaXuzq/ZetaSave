@@ -18,7 +18,48 @@ function ipfsToHttp(url: string): string {
 }
 
 export function NFTGallery() {
+  // All hooks must be called at the top level, before any conditional returns
   const { nfts, nftCount, isLoading, isError, error, refetch } = useUserNFTs()
+  const { plans = [], isError: plansError, isLoading: plansLoading } = useUserPlans()
+
+  // Calculate progress and milestone status - must be called before any conditional returns
+  const milestoneStatus = useMemo(() => {
+    // Handle error or empty plans
+    if (plansError || !plans || plans.length === 0) {
+      return {
+        progress50: false,
+        progress100: false,
+        has50Milestone: false,
+        has100Milestone: false,
+      }
+    }
+    
+    // Filter active plans and ensure they are valid
+    const activePlans = plans.filter(p => p && p.isActive && typeof p.progress === 'number')
+    if (activePlans.length === 0) {
+      return {
+        progress50: false,
+        progress100: false,
+        has50Milestone: false,
+        has100Milestone: false,
+      }
+    }
+    
+    // Safely calculate max progress - ensure we have valid numbers
+    const progressValues = activePlans.map(p => p.progress).filter(p => typeof p === 'number' && !isNaN(p) && isFinite(p))
+    const maxProgress = progressValues.length > 0 ? Math.max(...progressValues) : 0
+    
+    // Safely check milestones with optional chaining
+    const has50Milestone = activePlans.some(p => p.milestones?.fifty === true)
+    const has100Milestone = activePlans.some(p => p.milestones?.hundred === true)
+    
+    return {
+      progress50: maxProgress >= 50,
+      progress100: maxProgress >= 100,
+      has50Milestone,
+      has100Milestone,
+    }
+  }, [plans, plansError])
 
   if (isLoading) {
     return (
@@ -61,48 +102,6 @@ export function NFTGallery() {
       </Card>
     )
   }
-
-  // Get user plans to determine activation status - with error handling
-  const { plans = [], isError: plansError, isLoading: plansLoading } = useUserPlans()
-  
-  // Calculate progress and milestone status
-  const milestoneStatus = useMemo(() => {
-    // Handle error or empty plans
-    if (plansError || !plans || plans.length === 0) {
-      return {
-        progress50: false,
-        progress100: false,
-        has50Milestone: false,
-        has100Milestone: false,
-      }
-    }
-    
-    // Filter active plans and ensure they are valid
-    const activePlans = plans.filter(p => p && p.isActive && typeof p.progress === 'number')
-    if (activePlans.length === 0) {
-      return {
-        progress50: false,
-        progress100: false,
-        has50Milestone: false,
-        has100Milestone: false,
-      }
-    }
-    
-    // Safely calculate max progress - ensure we have valid numbers
-    const progressValues = activePlans.map(p => p.progress).filter(p => typeof p === 'number' && !isNaN(p) && isFinite(p))
-    const maxProgress = progressValues.length > 0 ? Math.max(...progressValues) : 0
-    
-    // Safely check milestones with optional chaining
-    const has50Milestone = activePlans.some(p => p.milestones?.fifty === true)
-    const has100Milestone = activePlans.some(p => p.milestones?.hundred === true)
-    
-    return {
-      progress50: maxProgress >= 50,
-      progress100: maxProgress >= 100,
-      has50Milestone,
-      has100Milestone,
-    }
-  }, [plans, plansError])
 
   // Default NFT image URLs (IPFS fallback) - different for each milestone
   const getNFTImageUrl = (milestonePercent: number): string => {
