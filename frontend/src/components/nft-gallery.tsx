@@ -62,12 +62,13 @@ export function NFTGallery() {
     )
   }
 
-  // Get user plans to determine activation status
-  const { plans } = useUserPlans()
+  // Get user plans to determine activation status - with error handling
+  const { plans = [], isError: plansError, isLoading: plansLoading } = useUserPlans()
   
   // Calculate progress and milestone status
   const milestoneStatus = useMemo(() => {
-    if (!plans || plans.length === 0) {
+    // Handle error or empty plans
+    if (plansError || !plans || plans.length === 0) {
       return {
         progress50: false,
         progress100: false,
@@ -76,7 +77,8 @@ export function NFTGallery() {
       }
     }
     
-    const activePlans = plans.filter(p => p.isActive)
+    // Filter active plans and ensure they are valid
+    const activePlans = plans.filter(p => p && p.isActive && typeof p.progress === 'number')
     if (activePlans.length === 0) {
       return {
         progress50: false,
@@ -86,9 +88,13 @@ export function NFTGallery() {
       }
     }
     
-    const maxProgress = Math.max(...activePlans.map(p => p.progress))
-    const has50Milestone = activePlans.some(p => p.milestones.fifty)
-    const has100Milestone = activePlans.some(p => p.milestones.hundred)
+    // Safely calculate max progress - ensure we have valid numbers
+    const progressValues = activePlans.map(p => p.progress).filter(p => typeof p === 'number' && !isNaN(p) && isFinite(p))
+    const maxProgress = progressValues.length > 0 ? Math.max(...progressValues) : 0
+    
+    // Safely check milestones with optional chaining
+    const has50Milestone = activePlans.some(p => p.milestones?.fifty === true)
+    const has100Milestone = activePlans.some(p => p.milestones?.hundred === true)
     
     return {
       progress50: maxProgress >= 50,
@@ -96,7 +102,7 @@ export function NFTGallery() {
       has50Milestone,
       has100Milestone,
     }
-  }, [plans])
+  }, [plans, plansError])
 
   // Default NFT image URLs (IPFS fallback) - different for each milestone
   const getNFTImageUrl = (milestonePercent: number): string => {
@@ -104,7 +110,7 @@ export function NFTGallery() {
     // These should match the images returned by the API/contract tokenURI
     if (milestonePercent === 50) {
       // 50% milestone NFT image
-      return 'ipfs://bafybeidjcgqgolkjyhcezurig5h4azundsgjlx5aqeo5ka26lpdalxfz7i'
+      return 'ipfs://bafybeidcn5iujtcovtyk6b7afu374ybvrjnhlqjzwzp4zfwodzbcmoe5qi'
     } else {
       // 100% milestone NFT image
       return 'ipfs://bafybeidjcgqgolkjyhcezurig5h4azundsgjlx5aqeo5ka26lpdalxfz7i'

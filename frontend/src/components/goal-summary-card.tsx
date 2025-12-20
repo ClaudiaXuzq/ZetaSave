@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Target, Calendar, Palmtree, Loader2, RefreshCw, Wallet } from "lucide-react"
 import { useMultiChainBalances } from "@/hooks/useMultiChainBalances"
 import { useMemo } from "react"
@@ -72,8 +73,8 @@ export function GoalSummaryCard({ initialContext }: GoalSummaryCardProps) {
           <h2 className="text-lg font-semibold text-foreground mb-1">Savings Goal</h2>
           <p className="text-sm text-muted-foreground">Track your progress across chains</p>
         </div>
-        <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center">
-          <Target className="w-5 h-5 text-accent-foreground" />
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#228B22' }}>
+          <Target className="w-5 h-5 text-white" />
         </div>
       </div>
 
@@ -114,14 +115,16 @@ export function GoalSummaryCard({ initialContext }: GoalSummaryCardProps) {
             )}
           </div>
           {isConnected && (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={refetch}
-              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded"
+              className="text-muted-foreground hover:text-foreground"
               disabled={isLoading}
               title="Refresh balances"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </button>
+            </Button>
           )}
         </div>
 
