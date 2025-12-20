@@ -22,14 +22,6 @@ const ZETACHAIN_ATHENS = {
   blockExplorerUrls: ["https://athens.explorer.zetachain.com"],
 };
 
-// 替换成你的真实合约地址
-const CONTRACT_ADDRESS = "0x3E0c67B0dB328BFE75d68b5236fD234E01E8788b";
-
-const CONTRACT_ABI = [
-  "function createSavingsPlan(address tokenAddress, uint256 targetAmount, uint256 amountPerCycle, uint256 cycleFrequency, string savingsGoal) public returns (uint256)",
-  "event PlanCreated(address indexed user, uint256 planId, uint256 targetAmount, address tokenAddress)"
-];
-
 interface Message {
   id: string
   role: "user" | "assistant"
@@ -97,9 +89,10 @@ export function AiChatPanel() {
 
   // 3. 处理路由传参 (StartingPage 跳转过来的数据)
   useEffect(() => {
-    if (location.state?.initialContext && !hasInitialized.current) {
+    const initialContext = location.state?.initialContext;
+    if (initialContext && !hasInitialized.current) {
       hasInitialized.current = true;
-      const { targetAmount, goalDate, purpose, notes } = location.state.initialContext;
+      const { targetAmount, goalDate, purpose, notes } = initialContext;
       
       const prompt = `I want to create a savings plan. 
       Goal Purpose: ${purpose}. 
@@ -119,7 +112,7 @@ export function AiChatPanel() {
 
       triggerAiResponse(prompt, autoUserMessage);
     }
-  }, [location.state]);
+  }, [location.state?.initialContext]);
 
   // 4. 核心：触发 AI 回复
   const triggerAiResponse = async (userText: string, userMsgContext?: Message) => {
@@ -258,7 +251,8 @@ export function AiChatPanel() {
 
       // 1. 处理 token 地址 (确保格式正确)
       let tokenAddress = planData.token_address;
-      if (!tokenAddress || tokenAddress.length < 10 || tokenAddress === "ZETA") {
+      const isNativeZETA = !tokenAddress || tokenAddress.length < 10 || tokenAddress === "ZETA";
+      if (isNativeZETA) {
          tokenAddress = "0x0000000000000000000000000000000000000000";
       } else {
          tokenAddress = ethers.getAddress(tokenAddress);
@@ -284,45 +278,59 @@ export function AiChatPanel() {
         throw new Error(`Token ${tokenAddress} is not supported. Please contact admin.`);
       }
 
-      // 4. 准备 ERC-20 合约
-      const ERC20_ABI = [
-        "function approve(address spender, uint256 amount) public returns (bool)",
-        "function balanceOf(address account) public view returns (uint256)"
-      ];
-      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, currentSigner);
-
-      // 5. 检查余额
-      setMessages(prev => prev.map(m =>
-        m.id === loadingMsgId
-        ? { ...m, content: "Checking your ZRC-20 token balance... 💰" }
-        : m
-      ));
-
       const userAddress = await currentSigner.getAddress();
-      const balance = await tokenContract.balanceOf(userAddress);
 
-      if (balance < symbolicDeposit) {
-        throw new Error(`Insufficient ZRC-20 balance! Required: 0.0001 ZETA.`);
+      // 4. 检查余额 (区分原生 ZETA 和 ZRC-20 token)
+      if (isNativeZETA) {
+        // 对于原生 ZETA，检查原生余额
+        setMessages(prev => prev.map(m =>
+          m.id === loadingMsgId
+          ? { ...m, content: "Checking your native ZETA balance... 💰" }
+          : m
+        ));
+
+        const balance = await provider.getBalance(userAddress);
+        if (balance < symbolicDeposit) {
+          throw new Error(`Insufficient native ZETA balance! Required: 0.0001 ZETA. Current balance: ${ethers.formatEther(balance)} ZETA`);
+        }
+      } else {
+        // 对于 ZRC-20 token，检查 token 余额并授权
+        setMessages(prev => prev.map(m =>
+          m.id === loadingMsgId
+          ? { ...m, content: "Checking your ZRC-20 token balance... 💰" }
+          : m
+        ));
+
+        const ERC20_ABI = [
+          "function approve(address spender, uint256 amount) public returns (bool)",
+          "function balanceOf(address account) public view returns (uint256)"
+        ];
+        const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, currentSigner);
+        const balance = await tokenContract.balanceOf(userAddress);
+
+        if (balance < symbolicDeposit) {
+          throw new Error(`Insufficient ZRC-20 balance! Required: 0.0001 token.`);
+        }
+
+        // 5. 核心步骤：授权 (Approve) - 仅对 ZRC-20 token
+        setMessages(prev => prev.map(m =>
+          m.id === loadingMsgId
+          ? { ...m, content: "Balance sufficient! Approving ZRC-20 token... Please confirm in MetaMask. 🦊" }
+          : m
+        ));
+
+        const approveTx = await tokenContract.approve(
+          ZETASAVE_CONTRACT.address,
+          symbolicDeposit
+        );
+        console.log("Approve transaction sent:", approveTx.hash);
+        await approveTx.wait();
       }
 
-      // 6. 核心步骤：授权 (Approve)
+      // 6. 发起创建计划交易
       setMessages(prev => prev.map(m =>
         m.id === loadingMsgId
-        ? { ...m, content: "Balance sufficient! Approving ZRC-20 token... Please confirm in MetaMask. 🦊" }
-        : m
-      ));
-
-      const approveTx = await tokenContract.approve(
-        ZETASAVE_CONTRACT.address,
-        symbolicDeposit
-      );
-      console.log("Approve transaction sent:", approveTx.hash);
-      await approveTx.wait();
-
-      // 7. 发起创建计划交易
-      setMessages(prev => prev.map(m =>
-        m.id === loadingMsgId
-        ? { ...m, content: "Token approved! Creating savings plan... 🦊" }
+        ? { ...m, content: isNativeZETA ? "Creating savings plan with native ZETA... 🦊" : "Token approved! Creating savings plan... 🦊" }
         : m
       ));
 
@@ -330,9 +338,11 @@ export function AiChatPanel() {
         zrc20: tokenAddress,
         targetAmount: targetAmountWei.toString(),
         savingsGoal: planData.savings_goal,
-        initialDeposit: symbolicDeposit.toString()
+        initialDeposit: symbolicDeposit.toString(),
+        isNativeZETA
       });
 
+      // 注意: createPlanDirect 是 nonpayable，合约内部会处理原生 ZETA 转账
       const tx = await contract.createPlanDirect(
         tokenAddress,
         targetAmountWei,
@@ -387,7 +397,7 @@ You can now manage deposits and withdrawals in the Dashboard.`,
   }
 
   return (
-    <Card className="h-[calc(100vh-40px)] flex flex-col shadow-none border-0 bg-transparent">
+    <Card className="h-[calc(100vh-40px)] flex flex-col shadow-sm border-border/50 rounded-2xl bg-card">
       {/* Header */}
       <div className="px-4 py-3 border-b border-border flex items-center gap-3">
         <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center relative border border-border">

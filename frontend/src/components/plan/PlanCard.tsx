@@ -1,6 +1,5 @@
 // Single savings plan display card
 
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { PlanProgress } from './PlanProgress'
 import type { FormattedPlan } from '@/types/contracts'
@@ -20,14 +19,14 @@ export function PlanCard({ plan }: PlanCardProps) {
   }
 
   return (
-    <Card className="rounded-2xl shadow-sm border-border/50 hover:shadow-md transition-shadow">
-      <CardHeader className="pb-2">
+    <div>
+      <div className="pb-2">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2">
             <Target className="w-5 h-5 text-primary" />
-            <CardTitle className="text-base font-semibold">
+            <h3 className="text-base font-semibold">
               {plan.savingsGoal || 'Savings Plan'}
-            </CardTitle>
+            </h3>
           </div>
           <div className="flex gap-1.5">
             {plan.isActive ? (
@@ -46,14 +45,14 @@ export function PlanCard({ plan }: PlanCardProps) {
             {plan.token.symbol} on {plan.token.chainName}
           </Badge>
         </div>
-      </CardHeader>
+      </div>
 
-      <CardContent className="space-y-4">
+      <div className="space-y-4">
         {/* Progress section */}
         <div>
           <div className="flex justify-between text-sm mb-2">
             <span className="text-muted-foreground">Progress</span>
-            <span className="font-medium">{plan.progress}%</span>
+            <span className="font-medium">{plan.progress.toFixed(2)}%</span>
           </div>
           <PlanProgress
             progress={plan.progress}
@@ -88,7 +87,7 @@ export function PlanCard({ plan }: PlanCardProps) {
           <Calendar className="w-3.5 h-3.5" />
           Started {plan.startTime.toLocaleDateString()}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

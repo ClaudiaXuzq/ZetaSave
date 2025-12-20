@@ -70,27 +70,30 @@ export function PlanList() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <PiggyBank className="w-5 h-5" />
-          Your Savings Plans ({planCount})
-        </h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => refetch()}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {plans.map((plan) => (
-          <PlanCard key={plan.id} plan={plan} />
-        ))}
-      </div>
-    </div>
+    <Card className="rounded-2xl shadow-sm border-border/50">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <PiggyBank className="w-5 h-5" />
+            Your Savings Plans ({planCount})
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => refetch()}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-4">
+          {plans.map((plan) => (
+            <PlanCard key={plan.id} plan={plan} />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

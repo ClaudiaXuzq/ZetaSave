@@ -43,13 +43,6 @@ export default function StartingPage() {
     })
   }
 
-  const handleConnectWallet = () => {
-    // 这里的逻辑也可以优化，但暂时保持原样或只是简单的跳转
-    console.log("Connecting wallet...")
-    // 如果你有专门的连接钱包逻辑，可以在这里调用，或者单纯跳到 dashboard
-    navigate("/dashboard") 
-  }
-
   return (
     <div className="min-h-screen bg-background" style={{ fontFamily: "'Merriweather', serif" }}>
       {/* Snowflakes decoration */}
@@ -68,9 +61,6 @@ export default function StartingPage() {
             <img src="/logoV4.svg" alt="ZetaSave Logo" className="w-8 h-8" style={{ filter: 'brightness(0) saturate(100%) invert(13%) sepia(89%) saturate(3034%) hue-rotate(344deg) brightness(95%) contrast(95%)' }} />
             <h1 className="text-xl font-semibold" style={{ color: 'rgb(139, 26, 26)' }}>ZetaSave</h1>
           </div>
-          <Button variant="outline" size="sm" onClick={handleConnectWallet}>
-            Connect MetaMask Wallet
-          </Button>
         </div>
       </header>
 
@@ -133,7 +123,7 @@ export default function StartingPage() {
                   <SelectValue placeholder="Select your savings goal" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="christmas-travel">Christmas Travel</SelectItem>
+                  <SelectItem value="christmas-travel">Traveling</SelectItem>
                   <SelectItem value="shopping">Shopping</SelectItem>
                   <SelectItem value="loan-repayment">Loan Repayment</SelectItem>
                   <SelectItem value="others">Others</SelectItem>
@@ -152,12 +142,9 @@ export default function StartingPage() {
               />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 pt-4">
-              <Button onClick={handleStartSaving} className="flex-1 text-base h-11" size="lg">
+            <div className="pt-4">
+              <Button onClick={handleStartSaving} className="w-full text-base h-11" size="lg">
                 Start Saving Plan
-              </Button>
-              <Button onClick={handleConnectWallet} variant="outline" className="flex-1 text-base h-11" size="lg">
-                Connect MetaMask Wallet
               </Button>
             </div>
           </CardContent>

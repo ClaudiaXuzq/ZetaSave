@@ -1,10 +1,13 @@
 // NFT Gallery component - displays user's achievement NFTs with chain info
 
 import { useUserNFTs } from '@/hooks/useUserNFTs'
+import { useUserPlans } from '@/hooks/useUserPlans'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { NFTImage } from '@/components/nft-image'
 import { Trophy, Loader2, RefreshCw, ExternalLink } from 'lucide-react'
+import { useMemo } from 'react'
 
 // Convert IPFS URL to HTTP gateway URL
 function ipfsToHttp(url: string): string {
@@ -59,6 +62,55 @@ export function NFTGallery() {
     )
   }
 
+  // Get user plans to determine activation status
+  const { plans } = useUserPlans()
+  
+  // Calculate progress and milestone status
+  const milestoneStatus = useMemo(() => {
+    if (!plans || plans.length === 0) {
+      return {
+        progress50: false,
+        progress100: false,
+        has50Milestone: false,
+        has100Milestone: false,
+      }
+    }
+    
+    const activePlans = plans.filter(p => p.isActive)
+    if (activePlans.length === 0) {
+      return {
+        progress50: false,
+        progress100: false,
+        has50Milestone: false,
+        has100Milestone: false,
+      }
+    }
+    
+    const maxProgress = Math.max(...activePlans.map(p => p.progress))
+    const has50Milestone = activePlans.some(p => p.milestones.fifty)
+    const has100Milestone = activePlans.some(p => p.milestones.hundred)
+    
+    return {
+      progress50: maxProgress >= 50,
+      progress100: maxProgress >= 100,
+      has50Milestone,
+      has100Milestone,
+    }
+  }, [plans])
+
+  // Default NFT image URLs (IPFS fallback) - different for each milestone
+  const getNFTImageUrl = (milestonePercent: number): string => {
+    // Use different images for 50% and 100% milestones
+    // These should match the images returned by the API/contract tokenURI
+    if (milestonePercent === 50) {
+      // 50% milestone NFT image
+      return 'ipfs://bafybeidjcgqgolkjyhcezurig5h4azundsgjlx5aqeo5ka26lpdalxfz7i'
+    } else {
+      // 100% milestone NFT image
+      return 'ipfs://bafybeidjcgqgolkjyhcezurig5h4azundsgjlx5aqeo5ka26lpdalxfz7i'
+    }
+  }
+
   if (nftCount === 0) {
     return (
       <Card className="rounded-2xl shadow-sm border-border/50">
@@ -69,9 +121,40 @@ export function NFTGallery() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground text-center py-8">
-            No NFTs yet. Reach savings milestones to earn achievement NFTs!
-          </p>
+          <div className="space-y-6 py-4">
+            <p className="text-sm text-muted-foreground text-center">
+              Reach savings milestones to earn achievement NFTs!
+            </p>
+            
+            {/* NFT Preview Cards */}
+            <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
+              {/* 50% Milestone NFT */}
+              <div className="flex flex-col items-center gap-2">
+                <NFTImage
+                  imageUrl={getNFTImageUrl(50)}
+                  isActivated={milestoneStatus.has50Milestone}
+                  milestonePercent={50}
+                  className="w-full"
+                />
+                <span className="text-xs text-muted-foreground font-medium">
+                  50% Milestone
+                </span>
+              </div>
+              
+              {/* 100% Milestone NFT */}
+              <div className="flex flex-col items-center gap-2">
+                <NFTImage
+                  imageUrl={getNFTImageUrl(100)}
+                  isActivated={milestoneStatus.has100Milestone}
+                  milestonePercent={100}
+                  className="w-full"
+                />
+                <span className="text-xs text-muted-foreground font-medium">
+                  100% Milestone
+                </span>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
     )

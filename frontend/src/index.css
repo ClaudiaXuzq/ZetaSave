@@ -129,3 +129,25 @@
   font-family: 'Merriweather', serif;
 }
 
+/* Custom styles for RainbowKit ConnectButton */
+button[data-testid="rk-connect-button"],
+button[data-testid="rk-connect-button"] * {
+  font-family: 'Merriweather', serif !important;
+}
+
+button[data-testid="rk-connect-button"] {
+  background-color: #228B22 !important;
+  color: white !important;
+  border-color: #228B22 !important;
+}
+
+button[data-testid="rk-connect-button"]:hover {
+  background-color: #1B5E20 !important;
+  border-color: #1B5E20 !important;
+}
+
+button[data-testid="rk-connect-button"]:focus {
+  background-color: #228B22 !important;
+  border-color: #228B22 !important;
+}
+

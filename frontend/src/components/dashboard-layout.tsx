@@ -2,7 +2,16 @@ import { AiChatPanel } from "@/components/ai-chat-panel"
 import { SavingsDashboard } from "@/components/savings-dashboard"
 import { ConnectButton } from "@rainbow-me/rainbowkit"
 
-export function DashboardLayout() {
+interface DashboardLayoutProps {
+  initialContext?: {
+    targetAmount?: string
+    goalDate?: string
+    purpose?: string
+    notes?: string
+  } | null
+}
+
+export function DashboardLayout({ initialContext }: DashboardLayoutProps) {
   return (
     <div className="min-h-screen bg-background font-merriweather">
       {/* Header */}
@@ -31,7 +40,7 @@ export function DashboardLayout() {
 
           {/* Right Column - Savings Dashboard */}
           <div className="lg:col-span-7 xl:col-span-8">
-            <SavingsDashboard />
+            <SavingsDashboard initialContext={initialContext} />
           </div>
         </div>
       </main>
