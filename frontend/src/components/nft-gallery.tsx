@@ -2,12 +2,22 @@
 
 import { useUserNFTs } from '@/hooks/useUserNFTs'
 import { useUserPlans } from '@/hooks/useUserPlans'
+import { useMultiChainBalances } from '@/hooks/useMultiChainBalances'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { NFTImage } from '@/components/nft-image'
 import { Trophy, Loader2, RefreshCw, ExternalLink } from 'lucide-react'
 import { useMemo } from 'react'
+
+interface NFTGalleryProps {
+  initialContext?: {
+    targetAmount?: string
+    goalDate?: string
+    purpose?: string
+    notes?: string
+  } | null
+}
 
 // Convert IPFS URL to HTTP gateway URL
 function ipfsToHttp(url: string): string {
@@ -17,53 +27,109 @@ function ipfsToHttp(url: string): string {
   return url
 }
 
-export function NFTGallery() {
+export function NFTGallery({ initialContext }: NFTGalleryProps) {
   // All hooks must be called at the top level, before any conditional returns
   const { nfts, nftCount, isLoading, isError, error, refetch } = useUserNFTs()
   const { plans = [], isError: plansError, isLoading: plansLoading } = useUserPlans()
+  const { assets, isLoading: isLoadingBalances, isConnected } = useMultiChainBalances()
 
   // Calculate progress and milestone status - must be called before any conditional returns
-  // Check if user actually owns NFTs for each milestone (most accurate method)
+  // Use EXACT same logic as PlanCard to calculate progress
   const milestoneStatus = useMemo(() => {
-    // First, check if user owns NFTs for each milestone
-    const has50MilestoneNFT = nfts.some(nft => nft.milestonePercent === 50)
-    const has100MilestoneNFT = nfts.some(nft => nft.milestonePercent === 100)
+    // Get the latest plan (highest ID) - same logic as PlanList
+    const latestPlan = plans && plans.length > 0 ? plans[plans.length - 1] : null
+    let progress = 0
     
-    // Also check plan milestones as fallback
-    let has50MilestoneFromPlans = false
-    let has100MilestoneFromPlans = false
-    
-    if (!plansError && plans && plans.length > 0) {
-      const activePlans = plans.filter(p => p && p.isActive && typeof p.progress === 'number')
-      if (activePlans.length > 0) {
-        has50MilestoneFromPlans = activePlans.some(p => p.milestones?.fifty === true)
-        has100MilestoneFromPlans = activePlans.some(p => p.milestones?.hundred === true)
+    if (!plansError && latestPlan && latestPlan.isActive) {
+      // Calculate total USD value from wallet balances (same as PlanList)
+      const totalWalletValueUSD = isConnected && !isLoadingBalances
+        ? assets.reduce((sum, asset) => {
+            if (asset.isLoading || asset.isError) return sum
+            const valueStr = asset.value.replace(/[^0-9.]/g, '')
+            const value = parseFloat(valueStr) || 0
+            return sum + value
+          }, 0)
+        : 0
+      
+      // Get target amount in USD from initialContext (same as PlanList)
+      const targetAmountUSD = initialContext?.targetAmount
+        ? (() => {
+            const amount = parseFloat(initialContext.targetAmount)
+            return isNaN(amount) ? null : amount
+          })()
+        : null
+      
+      // Find matching wallet balance for the latest plan's token (same as PlanList)
+      const matchingAsset = isConnected && !isLoadingBalances
+        ? assets.find(asset => 
+            asset.symbol === latestPlan.token.symbol && 
+            asset.chainName === latestPlan.token.chainName &&
+            !asset.isLoading &&
+            !asset.isError
+          )
+        : null
+      
+      // Calculate walletBalanceUSD (same as PlanList)
+      const walletBalanceUSD = matchingAsset 
+        ? parseFloat(matchingAsset.value.replace(/[^0-9.]/g, '')) 
+        : null
+      
+      // Calculate currentUSD (EXACT same logic as PlanCard)
+      // Use wallet balance USD if available, otherwise fall back to total wallet value
+      const currentUSD = walletBalanceUSD !== null && walletBalanceUSD !== undefined 
+        ? walletBalanceUSD 
+        : totalWalletValueUSD || 0
+      
+      // Calculate targetUSD (EXACT same logic as PlanCard)
+      const targetUSD = targetAmountUSD ?? (() => {
+        // Fallback: convert from ETH if no USD target provided
+        const MOCK_USD_RATES: Record<string, number> = {
+          ETH: 2500,
+          ZETA: 0.8,
+          USDC: 1.0,
+        }
+        const usdRate = MOCK_USD_RATES[latestPlan.token.symbol] ?? 0
+        const targetNum = parseFloat(latestPlan.targetAmount)
+        return targetNum * usdRate
+      })()
+      
+      // Calculate display progress (EXACT same logic as PlanCard)
+      if (targetUSD <= 0) {
+        progress = 0
+      } else {
+        progress = Math.min((currentUSD / targetUSD) * 100, 100)
       }
+    } else if (!plansError && latestPlan && typeof latestPlan.progress === 'number') {
+      // Fallback: use plan.progress if wallet balances not available
+      progress = latestPlan.progress
     }
     
-    // Use NFT ownership as primary indicator, fallback to plan milestones
-    const has50Milestone = has50MilestoneNFT || has50MilestoneFromPlans
-    const has100Milestone = has100MilestoneNFT || has100MilestoneFromPlans
+    // Debug logging
+    console.log('[NFTGallery] Latest Plan:', latestPlan)
+    console.log('[NFTGallery] initialContext:', initialContext)
+    console.log('[NFTGallery] Assets:', assets)
+    console.log('[NFTGallery] isConnected:', isConnected, 'isLoadingBalances:', isLoadingBalances)
+    console.log('[NFTGallery] Progress (EXACT same as PlanCard):', progress)
     
-    // Calculate progress for display
-    let maxProgress = 0
-    if (!plansError && plans && plans.length > 0) {
-      const activePlans = plans.filter(p => p && p.isActive && typeof p.progress === 'number')
-      if (activePlans.length > 0) {
-        const progressValues = activePlans.map(p => p.progress).filter(p => typeof p === 'number' && !isNaN(p) && isFinite(p))
-        maxProgress = progressValues.length > 0 ? Math.max(...progressValues) : 0
-      }
-    }
+    // Determine activation based on progress thresholds:
+    // - 50% milestone NFT is activated when progress >= 50%
+    // - 100% milestone NFT is activated when progress >= 99%
+    const has50Milestone = progress >= 50
+    const has100Milestone = progress >= 99
+    
+    console.log('[NFTGallery] has50Milestone:', has50Milestone, 'has100Milestone:', has100Milestone)
     
     return {
-      progress50: maxProgress >= 50,
-      progress100: maxProgress >= 100,
+      progress50: progress >= 50,
+      progress100: progress >= 100,
       has50Milestone,
       has100Milestone,
+      maxProgress: progress,
     }
-  }, [nfts, plans, plansError])
+  }, [plans, plansError, assets, isConnected, isLoadingBalances, initialContext])
 
-  if (isLoading) {
+  // Wait for NFTs, plans, and balances to load before showing content
+  if (isLoading || plansLoading || isLoadingBalances) {
     return (
       <Card className="rounded-2xl shadow-sm border-border/50">
         <CardHeader>

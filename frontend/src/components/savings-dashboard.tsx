@@ -22,7 +22,7 @@ export function SavingsDashboard({ initialContext }: SavingsDashboardProps) {
         <PlanList initialContext={initialContext} />
         <RewardsCard />
       </div>
-      <NFTGallery />
+      <NFTGallery initialContext={initialContext} />
       <DailyTasksCard />
     </div>
   )

@@ -195,10 +195,12 @@ export function useUserPlans() {
   const error = errorCount || errorPlans || null
 
   // Combined refetch function
-  const refetch = () => {
-    refetchCount()
-    refetchPlans()
-    refetchProgress()
+  const refetch = async () => {
+    await Promise.all([
+      refetchCount(),
+      refetchPlans(),
+      refetchProgress()
+    ])
   }
 
   return {

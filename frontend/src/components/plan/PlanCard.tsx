@@ -3,16 +3,18 @@
 import { Badge } from '@/components/ui/badge'
 import { PlanProgress } from './PlanProgress'
 import type { FormattedPlan } from '@/types/contracts'
-import { Target, Calendar, Coins } from 'lucide-react'
+import { Target, Calendar } from 'lucide-react'
 import { useMemo } from 'react'
 
 interface PlanCardProps {
   plan: FormattedPlan
   targetAmountUSD?: number | null  // Target amount in USD from initialContext
   currentAmountUSD?: number        // Current wallet total value in USD
+  walletBalance?: string | null    // Wallet balance for the plan's token (e.g., "0.1432")
+  walletBalanceUSD?: number | null // Wallet balance in USD for the plan's token
 }
 
-export function PlanCard({ plan, targetAmountUSD, currentAmountUSD = 0 }: PlanCardProps) {
+export function PlanCard({ plan, targetAmountUSD, currentAmountUSD = 0, walletBalance, walletBalanceUSD }: PlanCardProps) {
   // Format amounts for display (limit decimal places)
   const formatAmount = (amount: string) => {
     const num = parseFloat(amount)
@@ -21,9 +23,12 @@ export function PlanCard({ plan, targetAmountUSD, currentAmountUSD = 0 }: PlanCa
     return num.toFixed(4).replace(/\.?0+$/, '')
   }
 
-  // Use USD amounts from props (synchronized with GoalSummaryCard and wallet balances)
-  // If targetAmountUSD is provided, use it; otherwise fall back to converting from ETH
-  const currentUSD = currentAmountUSD || 0
+  // Use wallet balance USD if available, otherwise fall back to total wallet value
+  // This ensures synchronization with GoalSummaryCard
+  const currentUSD = walletBalanceUSD !== null && walletBalanceUSD !== undefined 
+    ? walletBalanceUSD 
+    : currentAmountUSD || 0
+  
   const targetUSD = targetAmountUSD ?? (() => {
     // Fallback: convert from ETH if no USD target provided
     const MOCK_USD_RATES: Record<string, number> = {
@@ -41,6 +46,12 @@ export function PlanCard({ plan, targetAmountUSD, currentAmountUSD = 0 }: PlanCa
     if (targetUSD <= 0) return 0
     return Math.min((currentUSD / targetUSD) * 100, 100)
   }, [currentUSD, targetUSD])
+  
+  // Use wallet balance if available, otherwise fall back to plan balance
+  // This ensures ETH amount matches GoalSummaryCard
+  const displayBalanceAmount = walletBalance !== null && walletBalance !== undefined
+    ? walletBalance  // Already formatted from useMultiChainBalances
+    : formatAmount(plan.currentAmount)  // Format plan balance
 
   // Format USD values
   const formatUSD = (value: number) => {
@@ -95,20 +106,6 @@ export function PlanCard({ plan, targetAmountUSD, currentAmountUSD = 0 }: PlanCa
 
         {/* Amount details */}
         <div className="space-y-2">
-          <div className="flex justify-between items-center text-sm">
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <Coins className="w-4 h-4" />
-              Current
-            </span>
-            <div className="flex flex-col items-end">
-              <span className="font-medium">
-                {formatUSD(currentUSD)}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {formatAmount(plan.currentAmount)} {plan.token.symbol}
-              </span>
-            </div>
-          </div>
           <div className="flex justify-between items-center text-sm">
             <span className="flex items-center gap-1.5 text-muted-foreground">
               <Target className="w-4 h-4" />

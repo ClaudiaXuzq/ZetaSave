@@ -39,16 +39,38 @@ export function PlanList({ initialContext }: PlanListProps) {
     const amount = parseFloat(initialContext.targetAmount)
     return isNaN(amount) ? null : amount
   }, [initialContext?.targetAmount])
+  
+  // Get only the latest plan (highest ID)
+  const latestPlan = useMemo(() => {
+    if (!plans || plans.length === 0) return null
+    // Plans are sorted by ID (0, 1, 2, ...), so the latest is the last one
+    return plans[plans.length - 1]
+  }, [plans])
+  
+  // Find matching wallet balance for the latest plan's token
+  const matchingAsset = useMemo(() => {
+    if (!latestPlan || !isConnected || isLoadingBalances) return null
+    // Find asset that matches the plan's token symbol and chain
+    return assets.find(asset => 
+      asset.symbol === latestPlan.token.symbol && 
+      asset.chainName === latestPlan.token.chainName &&
+      !asset.isLoading &&
+      !asset.isError
+    ) || null
+  }, [latestPlan, assets, isConnected, isLoadingBalances])
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   
   // Auto-refresh more frequently when there are plans
   useEffect(() => {
     if (planCount > 0) {
-      const interval = setInterval(() => {
-        refetch().then(() => {
+      const interval = setInterval(async () => {
+        try {
+          await refetch()
           setLastRefresh(new Date())
-        })
+        } catch (error) {
+          console.error('Error refreshing plans:', error)
+        }
       }, 5000) // Refresh every 5 seconds
       
       return () => clearInterval(interval)
@@ -125,6 +147,25 @@ export function PlanList({ initialContext }: PlanListProps) {
     )
   }
 
+  // If no latest plan found, show empty state
+  if (!latestPlan) {
+    return (
+      <Card className="rounded-2xl shadow-sm border-border/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PiggyBank className="w-5 h-5" />
+            Your Savings Plans
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground text-center py-8">
+            No savings plans available.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <Card className="rounded-2xl shadow-sm border-border/50">
       <CardHeader>
@@ -132,7 +173,7 @@ export function PlanList({ initialContext }: PlanListProps) {
           <div className="flex flex-col gap-1">
             <CardTitle className="flex items-center gap-2">
               <PiggyBank className="w-5 h-5" />
-              Your Savings Plans ({planCount})
+              Your Savings Plans
             </CardTitle>
             {lastRefresh && (
               <p className="text-xs text-muted-foreground">
@@ -154,14 +195,14 @@ export function PlanList({ initialContext }: PlanListProps) {
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 gap-4">
-          {plans.map((plan) => (
-            <PlanCard 
-              key={plan.id} 
-              plan={plan}
-              targetAmountUSD={targetAmountUSD}
-              currentAmountUSD={totalWalletValueUSD}
-            />
-          ))}
+          <PlanCard 
+            key={latestPlan.id} 
+            plan={latestPlan}
+            targetAmountUSD={targetAmountUSD}
+            currentAmountUSD={totalWalletValueUSD}
+            walletBalance={matchingAsset?.amount || null}
+            walletBalanceUSD={matchingAsset ? parseFloat(matchingAsset.value.replace(/[^0-9.]/g, '')) : null}
+          />
         </div>
       </CardContent>
     </Card>
