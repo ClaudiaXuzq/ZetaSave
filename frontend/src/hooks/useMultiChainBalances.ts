@@ -54,19 +54,34 @@ export function useMultiChainBalances() {
   const sepoliaBalance = useBalance({
     address,
     chainId: sepolia.id,
-    query: { enabled: isConnected && !!address },
+    query: {
+      enabled: isConnected && !!address,
+      refetchInterval: 5000, // Refetch every 5 seconds for real-time sync
+      refetchOnWindowFocus: true,
+      staleTime: 0, // Always consider data stale to ensure fresh data
+    },
   })
 
   const baseBalance = useBalance({
     address,
     chainId: baseSepolia.id,
-    query: { enabled: isConnected && !!address },
+    query: {
+      enabled: isConnected && !!address,
+      refetchInterval: 5000, // Refetch every 5 seconds for real-time sync
+      refetchOnWindowFocus: true,
+      staleTime: 0, // Always consider data stale to ensure fresh data
+    },
   })
 
   const zetaBalance = useBalance({
     address,
     chainId: zetaChainAthens.id,
-    query: { enabled: isConnected && !!address },
+    query: {
+      enabled: isConnected && !!address,
+      refetchInterval: 5000, // Refetch every 5 seconds for real-time sync
+      refetchOnWindowFocus: true,
+      staleTime: 0, // Always consider data stale to ensure fresh data
+    },
   })
 
   // USDC balance on Sepolia (ERC-20)
@@ -76,7 +91,12 @@ export function useMultiChainBalances() {
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
     chainId: sepolia.id,
-    query: { enabled: isConnected && !!address },
+    query: {
+      enabled: isConnected && !!address,
+      refetchInterval: 5000, // Refetch every 5 seconds for real-time sync
+      refetchOnWindowFocus: true,
+      staleTime: 0, // Always consider data stale to ensure fresh data
+    },
   })
 
   // Helper function to format balance and calculate mock USD value

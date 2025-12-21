@@ -4,12 +4,15 @@ import { Badge } from '@/components/ui/badge'
 import { PlanProgress } from './PlanProgress'
 import type { FormattedPlan } from '@/types/contracts'
 import { Target, Calendar, Coins } from 'lucide-react'
+import { useMemo } from 'react'
 
 interface PlanCardProps {
   plan: FormattedPlan
+  targetAmountUSD?: number | null  // Target amount in USD from initialContext
+  currentAmountUSD?: number        // Current wallet total value in USD
 }
 
-export function PlanCard({ plan }: PlanCardProps) {
+export function PlanCard({ plan, targetAmountUSD, currentAmountUSD = 0 }: PlanCardProps) {
   // Format amounts for display (limit decimal places)
   const formatAmount = (amount: string) => {
     const num = parseFloat(amount)
@@ -18,8 +21,34 @@ export function PlanCard({ plan }: PlanCardProps) {
     return num.toFixed(4).replace(/\.?0+$/, '')
   }
 
+  // Use USD amounts from props (synchronized with GoalSummaryCard and wallet balances)
+  // If targetAmountUSD is provided, use it; otherwise fall back to converting from ETH
+  const currentUSD = currentAmountUSD || 0
+  const targetUSD = targetAmountUSD ?? (() => {
+    // Fallback: convert from ETH if no USD target provided
+    const MOCK_USD_RATES: Record<string, number> = {
+      ETH: 2500,
+      ZETA: 0.8,
+      USDC: 1.0,
+    }
+    const usdRate = MOCK_USD_RATES[plan.token.symbol] ?? 0
+    const targetNum = parseFloat(plan.targetAmount)
+    return targetNum * usdRate
+  })()
+
+  // Calculate progress based on USD amounts (synchronized with wallet balance card)
+  const displayProgress = useMemo(() => {
+    if (targetUSD <= 0) return 0
+    return Math.min((currentUSD / targetUSD) * 100, 100)
+  }, [currentUSD, targetUSD])
+
+  // Format USD values
+  const formatUSD = (value: number) => {
+    return `$${Math.round(value).toLocaleString()}`
+  }
+
   return (
-    <div>
+    <div className="border border-border/50 rounded-xl p-4 bg-card/50 hover:bg-card/70 transition-colors">
       <div className="pb-2">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2">
@@ -52,10 +81,14 @@ export function PlanCard({ plan }: PlanCardProps) {
         <div>
           <div className="flex justify-between text-sm mb-2">
             <span className="text-muted-foreground">Progress</span>
-            <span className="font-medium">{plan.progress.toFixed(2)}%</span>
+            <span className="font-medium">
+              {displayProgress < 0.01 && displayProgress > 0 
+                ? '<0.01%' 
+                : displayProgress.toFixed(2) + '%'}
+            </span>
           </div>
           <PlanProgress
-            progress={plan.progress}
+            progress={displayProgress}
             milestones={plan.milestones}
           />
         </div>
@@ -67,18 +100,28 @@ export function PlanCard({ plan }: PlanCardProps) {
               <Coins className="w-4 h-4" />
               Current
             </span>
-            <span className="font-medium">
-              {formatAmount(plan.currentAmount)} {plan.token.symbol}
-            </span>
+            <div className="flex flex-col items-end">
+              <span className="font-medium">
+                {formatUSD(currentUSD)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {formatAmount(plan.currentAmount)} {plan.token.symbol}
+              </span>
+            </div>
           </div>
           <div className="flex justify-between items-center text-sm">
             <span className="flex items-center gap-1.5 text-muted-foreground">
               <Target className="w-4 h-4" />
               Target
             </span>
-            <span className="font-medium">
-              {formatAmount(plan.targetAmount)} {plan.token.symbol}
-            </span>
+            <div className="flex flex-col items-end">
+              <span className="font-medium">
+                {formatUSD(targetUSD)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {formatAmount(plan.targetAmount)} {plan.token.symbol}
+              </span>
+            </div>
           </div>
         </div>
 

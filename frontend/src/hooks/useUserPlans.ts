@@ -28,6 +28,9 @@ export function useUserPlans() {
     chainId: ZETASAVE_CONTRACT.chainId,
     query: {
       enabled: !!address,
+      refetchInterval: 5000, // Refetch every 5 seconds for better sync
+      refetchOnWindowFocus: true,
+      staleTime: 0, // Always consider data stale to ensure fresh data
     },
   })
 
@@ -60,6 +63,9 @@ export function useUserPlans() {
     contracts: planContracts,
     query: {
       enabled: planContracts.length > 0,
+      refetchInterval: 5000, // Refetch every 5 seconds for better sync
+      refetchOnWindowFocus: true,
+      staleTime: 0, // Always consider data stale to ensure fresh data
     },
   })
 
@@ -83,29 +89,75 @@ export function useUserPlans() {
     contracts: progressContracts,
     query: {
       enabled: progressContracts.length > 0,
+      refetchInterval: 5000, // Refetch every 5 seconds for better sync
+      refetchOnWindowFocus: true,
+      staleTime: 0, // Always consider data stale to ensure fresh data
     },
   })
 
   // Step 4: Format the plans for UI display
   const plans = useMemo((): FormattedPlan[] => {
-    if (!plansData) return []
+    if (!plansData) {
+      console.log('[useUserPlans] No plansData available')
+      return []
+    }
 
     const formattedPlans: FormattedPlan[] = []
 
     for (let index = 0; index < plansData.length; index++) {
       const result = plansData[index]
-      if (result.status !== 'success' || !result.result) continue
+      if (result.status !== 'success' || !result.result) {
+        console.warn(`[useUserPlans] Plan ${index} fetch failed:`, result)
+        continue
+      }
 
       const plan = result.result as SavingsPlanOnChain
-      const progress = progressData?.[index]?.status === 'success'
-        ? Number(progressData[index].result)
-        : 0
-
+      console.log(`[useUserPlans] Plan ${index}:`, {
+        currentAmount: plan.currentAmount.toString(),
+        targetAmount: plan.targetAmount.toString(),
+        savingsGoal: plan.savingsGoal,
+      })
+      
       // Get token info
       const tokenInfo = getTokenByAddress(plan.zrc20Token)
       const decimals = tokenInfo?.decimals ?? 18
       const symbol = tokenInfo?.symbol ?? 'Unknown'
       const chainName = tokenInfo?.chainName ?? getChainName(plan.sourceChainId)
+
+      // Format amounts
+      const targetAmountFormatted = formatUnits(plan.targetAmount, decimals)
+      const currentAmountFormatted = formatUnits(plan.currentAmount, decimals)
+
+      // Calculate progress: Always use the most accurate calculation
+      // Priority: Use contract value if available and meaningful, otherwise calculate from amounts
+      let progress = 0
+      
+      // Try to get progress from contract first
+      if (progressData?.[index]?.status === 'success' && progressData[index].result) {
+        const contractProgress = Number(progressData[index].result)
+        // Use contract value if it's meaningful (> 0) or if currentAmount is 0
+        if (contractProgress > 0 || plan.currentAmount === 0n) {
+          progress = contractProgress
+        }
+      }
+
+      // Calculate progress from amounts for better precision, especially for small values
+      // This handles cases where contract returns 0 due to integer division but actual progress > 0
+      if (plan.currentAmount > 0n && plan.targetAmount > 0n) {
+        const currentNum = parseFloat(currentAmountFormatted)
+        const targetNum = parseFloat(targetAmountFormatted)
+        if (targetNum > 0) {
+          const calculatedProgress = Math.min((currentNum / targetNum) * 100, 100)
+          // Use calculated progress if it's more accurate (contract might round down to 0)
+          // or if contract progress is 0 but we have actual deposits
+          if (calculatedProgress > progress || (progress === 0 && currentNum > 0)) {
+            progress = calculatedProgress
+            console.log(`[useUserPlans] Plan ${index} using calculated progress:`, progress, `(${currentNum} / ${targetNum})`)
+          } else {
+            console.log(`[useUserPlans] Plan ${index} using contract progress:`, progress)
+          }
+        }
+      }
 
       formattedPlans.push({
         id: index,
@@ -115,8 +167,8 @@ export function useUserPlans() {
           decimals,
           chainName,
         },
-        targetAmount: formatUnits(plan.targetAmount, decimals),
-        currentAmount: formatUnits(plan.currentAmount, decimals),
+        targetAmount: targetAmountFormatted,
+        currentAmount: currentAmountFormatted,
         targetAmountRaw: plan.targetAmount,
         currentAmountRaw: plan.currentAmount,
         progress,
@@ -131,6 +183,7 @@ export function useUserPlans() {
       })
     }
 
+    console.log(`[useUserPlans] Formatted ${formattedPlans.length} plans`)
     return formattedPlans
   }, [plansData, progressData])
 

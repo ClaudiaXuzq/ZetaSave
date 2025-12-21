@@ -23,35 +23,37 @@ export function NFTGallery() {
   const { plans = [], isError: plansError, isLoading: plansLoading } = useUserPlans()
 
   // Calculate progress and milestone status - must be called before any conditional returns
+  // Check if user actually owns NFTs for each milestone (most accurate method)
   const milestoneStatus = useMemo(() => {
-    // Handle error or empty plans
-    if (plansError || !plans || plans.length === 0) {
-      return {
-        progress50: false,
-        progress100: false,
-        has50Milestone: false,
-        has100Milestone: false,
+    // First, check if user owns NFTs for each milestone
+    const has50MilestoneNFT = nfts.some(nft => nft.milestonePercent === 50)
+    const has100MilestoneNFT = nfts.some(nft => nft.milestonePercent === 100)
+    
+    // Also check plan milestones as fallback
+    let has50MilestoneFromPlans = false
+    let has100MilestoneFromPlans = false
+    
+    if (!plansError && plans && plans.length > 0) {
+      const activePlans = plans.filter(p => p && p.isActive && typeof p.progress === 'number')
+      if (activePlans.length > 0) {
+        has50MilestoneFromPlans = activePlans.some(p => p.milestones?.fifty === true)
+        has100MilestoneFromPlans = activePlans.some(p => p.milestones?.hundred === true)
       }
     }
     
-    // Filter active plans and ensure they are valid
-    const activePlans = plans.filter(p => p && p.isActive && typeof p.progress === 'number')
-    if (activePlans.length === 0) {
-      return {
-        progress50: false,
-        progress100: false,
-        has50Milestone: false,
-        has100Milestone: false,
+    // Use NFT ownership as primary indicator, fallback to plan milestones
+    const has50Milestone = has50MilestoneNFT || has50MilestoneFromPlans
+    const has100Milestone = has100MilestoneNFT || has100MilestoneFromPlans
+    
+    // Calculate progress for display
+    let maxProgress = 0
+    if (!plansError && plans && plans.length > 0) {
+      const activePlans = plans.filter(p => p && p.isActive && typeof p.progress === 'number')
+      if (activePlans.length > 0) {
+        const progressValues = activePlans.map(p => p.progress).filter(p => typeof p === 'number' && !isNaN(p) && isFinite(p))
+        maxProgress = progressValues.length > 0 ? Math.max(...progressValues) : 0
       }
     }
-    
-    // Safely calculate max progress - ensure we have valid numbers
-    const progressValues = activePlans.map(p => p.progress).filter(p => typeof p === 'number' && !isNaN(p) && isFinite(p))
-    const maxProgress = progressValues.length > 0 ? Math.max(...progressValues) : 0
-    
-    // Safely check milestones with optional chaining
-    const has50Milestone = activePlans.some(p => p.milestones?.fifty === true)
-    const has100Milestone = activePlans.some(p => p.milestones?.hundred === true)
     
     return {
       progress50: maxProgress >= 50,
@@ -59,7 +61,7 @@ export function NFTGallery() {
       has50Milestone,
       has100Milestone,
     }
-  }, [plans, plansError])
+  }, [nfts, plans, plansError])
 
   if (isLoading) {
     return (

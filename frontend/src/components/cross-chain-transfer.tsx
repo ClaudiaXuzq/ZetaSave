@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -7,6 +7,7 @@ import { useMultiChainBalances } from "@/hooks/useMultiChainBalances"
 import { useCrossChainDeposit } from "@/hooks/useCrossChainDeposit"
 import { useUserPlans } from "@/hooks/useUserPlans"
 import { useAccount, useSwitchChain } from "wagmi"
+import { useQueryClient } from "@tanstack/react-query"
 import { parseUnits } from "viem"
 import { ArrowRight, Loader2, AlertCircle } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
@@ -16,9 +17,10 @@ import { sepolia, baseSepolia } from "wagmi/chains"
 export function CrossChainTransfer() {
   const { assets, isConnected } = useMultiChainBalances()
   const { deposit, isPending, isConfirming, isSuccess, error, reset, isOnSourceChain } = useCrossChainDeposit()
-  const { plans, isLoading: isLoadingPlans } = useUserPlans()
+  const { plans, isLoading: isLoadingPlans, refetch: refetchPlans } = useUserPlans()
   const { chain, address } = useAccount()
   const { switchChain, isPending: isSwitchingChain } = useSwitchChain()
+  const queryClient = useQueryClient()
   
   const [fromAsset, setFromAsset] = useState<string>("")
   const [toAsset, setToAsset] = useState<string>("")
@@ -142,7 +144,7 @@ export function CrossChainTransfer() {
 
       toast({
         title: "Transaction Submitted",
-        description: `Depositing ${amount} ${fromAssetDetails.symbol} to plan #${planId}`,
+        description: `Depositing ${amount} ${fromAssetDetails.symbol} to plan #${planId}. Waiting for cross-chain confirmation...`,
       })
     } catch (err: any) {
       toast({
@@ -153,16 +155,58 @@ export function CrossChainTransfer() {
     }
   }
 
-  // Reset form on success
-  if (isSuccess) {
-    setTimeout(() => {
-      setFromAsset("")
-      setToAsset("")
-      setAmount("")
-      setPlanId("")
-      reset()
-    }, 2000)
-  }
+  // Reset form and refetch plans on success
+  useEffect(() => {
+    if (isSuccess) {
+      toast({
+        title: "Transaction Confirmed",
+        description: "Cross-chain transaction confirmed. Refreshing plan data...",
+      })
+      
+      // Cross-chain transactions need time to propagate to ZetaChain
+      // Refetch multiple times with increasing delays to catch the update
+      const timeouts: NodeJS.Timeout[] = []
+      
+      // Immediate refetch
+      refetchPlans()
+      
+      // Refetch after delays (cross-chain can take 5-30 seconds)
+      timeouts.push(setTimeout(() => {
+        refetchPlans()
+        toast({
+          title: "Refreshing...",
+          description: "Checking for updated plan data on ZetaChain",
+        })
+      }, 5000)) // 5 seconds
+      
+      timeouts.push(setTimeout(() => {
+        refetchPlans()
+      }, 15000)) // 15 seconds
+      
+      timeouts.push(setTimeout(() => {
+        refetchPlans()
+        toast({
+          title: "Final Refresh",
+          description: "Plan data should now be up to date",
+        })
+      }, 30000)) // 30 seconds
+      
+      // Invalidate all wagmi queries
+      queryClient.invalidateQueries()
+      
+      setTimeout(() => {
+        setFromAsset("")
+        setToAsset("")
+        setAmount("")
+        setPlanId("")
+        reset()
+      }, 2000)
+      
+      return () => {
+        timeouts.forEach(timeout => clearTimeout(timeout))
+      }
+    }
+  }, [isSuccess, refetchPlans, reset, queryClient])
 
   if (!isConnected) {
     return null

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Send, Sparkles, Bot, User, Loader2, CheckCircle2, AlertCircle, Wallet } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ethers } from "ethers"
+import { useQueryClient } from "@tanstack/react-query"
 import { ZETASAVE_CONTRACT } from "@/config/contracts"
 import ZetaSaveCrossChainABI from "@/abi/ZetaSaveCrossChain.json"
 
@@ -57,6 +58,7 @@ export function AiChatPanel() {
   const [isLoading, setIsLoading] = useState(false)
   const [walletAddress, setWalletAddress] = useState("0xUnknown") // 🆕 存储钱包地址
   const scrollRef = useRef<HTMLDivElement>(null)
+  const queryClient = useQueryClient()
   
   const location = useLocation()
   const hasInitialized = useRef(false)
@@ -366,6 +368,18 @@ export function AiChatPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(planData),
       });
+
+      // Invalidate all queries and wait a bit for the transaction to be indexed
+      queryClient.invalidateQueries()
+      
+      // Refetch after delays to ensure we get the updated data
+      setTimeout(() => {
+        queryClient.invalidateQueries()
+      }, 2000)
+      
+      setTimeout(() => {
+        queryClient.invalidateQueries()
+      }, 5000)
 
       setMessages(prev => prev.map(m => 
         m.id === loadingMsgId 
